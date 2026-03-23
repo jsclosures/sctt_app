@@ -1,0 +1,32 @@
+'use client';
+
+import { UserProvider } from '@auth0/nextjs-auth0/client';
+import { CssBaseline, Box } from '@mui/material';
+import Sidebar from '../components/layout/Sidebar';
+import Topbar from '../components/layout/Topbar';
+import ThemeToggleButton from '../components/layout/ThemeSettings';
+import { ThemeConfigProvider } from '../context/themecontext';
+
+
+export default function ProtectedLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <UserProvider>
+          <ThemeConfigProvider>
+            <CssBaseline />
+            <Box sx={{ display: 'flex' }}>
+              <Sidebar />
+              <Box component="main" sx={{ flexGrow: 1, minHeight: '100vh', p: 3 }}>
+                <Topbar />
+                {children}
+              </Box>
+              {/* Floating Theme Toggle */}
+              <ThemeToggleButton />
+            </Box>
+          </ThemeConfigProvider>
+        </UserProvider>
+      </body>
+    </html>
+  );
+}
