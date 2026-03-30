@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import navConfig from '@/config/navconfig';
+import navConfig from '../../config/navconfig';
 import { useTheme } from '@mui/material/styles';
 import Link from 'next/link';
 import Image from 'next/image';
