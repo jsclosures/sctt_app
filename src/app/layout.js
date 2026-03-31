@@ -6,7 +6,8 @@ import Sidebar from '../components/layout/Sidebar';
 import Topbar from '../components/layout/Topbar';
 import ThemeToggleButton from '../components/layout/ThemeSettings';
 import { ThemeConfigProvider } from '../context/themecontext';
-
+import { AppProvider } from '../../context/AppContext';
+import SetupGuard from '../../components/SetupGuard';
 
 export default function ProtectedLayout({ children }) {
   return (
@@ -14,16 +15,19 @@ export default function ProtectedLayout({ children }) {
       <body>
         <UserProvider>
           <ThemeConfigProvider>
-            <CssBaseline />
-            <Box sx={{ display: 'flex' }}>
-              <Sidebar />
-              <Box component="main" sx={{ flexGrow: 1, minHeight: '100vh', p: 3 }}>
-                <Topbar />
-                {children}
-              </Box>
-              {/* Floating Theme Toggle */}
-              <ThemeToggleButton />
-            </Box>
+            <AppProvider>
+              <SetupGuard>
+                <CssBaseline />
+                <Box sx={{ display: 'flex' }}>
+                  <Sidebar />
+                  <Box component="main" sx={{ flexGrow: 1, minHeight: '100vh', p: 3 }}>
+                    <Topbar />
+                    {children}
+                  </Box>
+                  <ThemeToggleButton />
+                </Box>
+              </SetupGuard>
+            </AppProvider>
           </ThemeConfigProvider>
         </UserProvider>
       </body>
