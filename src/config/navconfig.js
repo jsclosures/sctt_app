@@ -1,37 +1,39 @@
-'use client';
-
-import StorageIcon from '@mui/icons-material/Storage';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import TerminalIcon from '@mui/icons-material/Terminal';
-import TableChartIcon from '@mui/icons-material/TableChart';
-import InsightsIcon from '@mui/icons-material/Insights';
+import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
+import ViewListRoundedIcon from '@mui/icons-material/ViewListRounded';
+import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
+import TerminalRoundedIcon from '@mui/icons-material/TerminalRounded';
+import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
+import AnalyticsRoundedIcon from '@mui/icons-material/AnalyticsRounded';
+import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 
 const navConfig = [
   {
-    label: 'System',
-    path: '/',
-    icon: <StorageIcon fontSize="small" />
+    section: 'Overview',
+    items: [
+      { label: 'Dashboard', icon: <DashboardRoundedIcon />, path: '/' },
+    ],
   },
   {
-    label: 'Tests',
-    path: '/tests',
-    icon: <AssignmentIcon fontSize="small" />
+    section: 'Workspace',
+    items: [
+      { label: 'Assets', icon: <ViewListRoundedIcon />, path: '/assets' },
+      { label: 'Tests', icon: <ScienceRoundedIcon />, path: '/tests' },
+    ],
   },
   {
-    label: 'Script Runner',
-    path: '/script-runner',
-    icon: <TerminalIcon fontSize="small" />
+    section: 'Execution',
+    items: [
+      { label: 'Script Runner', icon: <TerminalRoundedIcon />, path: '/script-runner' },
+      { label: 'Test Results', icon: <AssessmentRoundedIcon />, path: '/test-results' },
+      { label: 'Analyze', icon: <AnalyticsRoundedIcon />, path: '/analyze' },
+    ],
   },
   {
-    label: 'Test Results',
-    path: '/test-results',
-    icon: <TableChartIcon fontSize="small" />
+    section: 'System',
+    items: [
+      { label: 'Settings', icon: <SettingsRoundedIcon />, path: '/settings' },
+    ],
   },
-  {
-    label: 'Analyze',
-    path: '/analyze',
-    icon: <InsightsIcon fontSize="small" />
-  }
 ];
 
 export default navConfig;

@@ -8,6 +8,7 @@ import ThemeToggleButton from '../components/layout/ThemeSettings';
 import { ThemeConfigProvider } from '../context/themecontext';
 import { AppProvider } from '../../context/AppContext';
 import SetupGuard from '../../components/SetupGuard';
+import LogPanel from '../components/LogPanel';
 
 export default function ProtectedLayout({ children }) {
   return (
@@ -24,7 +25,8 @@ export default function ProtectedLayout({ children }) {
                     <Topbar />
                     {children}
                   </Box>
-                  <ThemeToggleButton />
+                  {/* <ThemeToggleButton /> */}
+                  <LogPanel />
                 </Box>
               </SetupGuard>
             </AppProvider>
