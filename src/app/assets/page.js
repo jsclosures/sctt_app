@@ -73,7 +73,7 @@ export default function AssetsPage() {
 
   const [current, setCurrent] = useState({ ...EMPTY_ASSET });
   const [tabValue, setTabValue] = useState(0);
-  const [editorHeight, setEditorHeight] = useState(300);
+  const [editorHeight, setEditorHeight] = useState(500);
   const [fullScreen, setFullScreen] = useState(false);
   const [assets, setAssets] = useState([]);
   const [totalAssets, setTotalAssets] = useState(0);
@@ -106,7 +106,9 @@ export default function AssetsPage() {
     let ids = [];
     if (Array.isArray(newSelection)) ids = newSelection;
     else if (newSelection && typeof newSelection[Symbol.iterator] === 'function') ids = [...newSelection];
-    else if (newSelection && typeof newSelection === 'object') ids = Object.values(newSelection).filter(v => typeof v === 'string' || typeof v === 'number');
+
+    // Force single selection — keep only the most recently clicked
+    if (ids.length > 1) ids = [ids[ids.length - 1]];
 
     setSelectedRowIds(ids);
     if (ids.length === 1) {
@@ -251,8 +253,7 @@ export default function AssetsPage() {
             rows={assets} columns={columns} loading={loading}
             rowCount={totalAssets} paginationMode="server"
             paginationModel={paginationModel} onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[5, 10, 20, 50]} checkboxSelection
-            onRowSelectionModelChange={handleSelectionChange}
+            pageSizeOptions={[5, 10, 20, 50]}
             onRowClick={handleRowClick}
             sx={{ height: '100%', '& .MuiDataGrid-row': { cursor: 'pointer' } }}
           />
