@@ -1,18 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  TextField,
-  Typography,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  CircularProgress
+  Box, Typography, TextField, Button, Stack, Paper, Chip, IconButton, Tooltip
 } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
+import {
+  SaveRounded, DeleteRounded, ClearRounded, ChatBubbleOutlineRounded, AddRounded
+} from '@mui/icons-material';
 import { getFeedback, saveFeedback, deleteFeedback } from '@/services/testResultsService';
 
 const QueryFeedback = ({ testName }) => {
@@ -27,32 +21,22 @@ const QueryFeedback = ({ testName }) => {
     setLoading(true);
     try {
       const data = await getFeedback(0, 200);
-      setFeedbackList(data.items || []);
-    } catch (e) {
-      console.error('Failed to load feedback:', e);
-    }
+      setFeedbackList((data.items || []).map((r, i) => ({ ...r, id: r.id || `fb-${i}` })));
+    } catch (e) { console.error('Failed to load feedback:', e); }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchFeedback();
-  }, []);
+  useEffect(() => { fetchFeedback(); }, []);
 
   const handleSave = async () => {
     if (!query) return;
-    const doc = {
-      query_txt: query,
-      comments_s: comments,
-      confidence_s: confidence,
-    };
+    const doc = { query_txt: query, comments_s: comments, confidence_s: confidence };
     if (selectedId) doc.id = selectedId;
     try {
       await saveFeedback(doc);
       clearForm();
       setTimeout(fetchFeedback, 600);
-    } catch (e) {
-      console.error('Failed to save feedback:', e);
-    }
+    } catch (e) { console.error('Save failed:', e); }
   };
 
   const handleDelete = async () => {
@@ -61,102 +45,106 @@ const QueryFeedback = ({ testName }) => {
       await deleteFeedback(selectedId);
       clearForm();
       setTimeout(fetchFeedback, 600);
-    } catch (e) {
-      console.error('Failed to delete feedback:', e);
-    }
+    } catch (e) { console.error('Delete failed:', e); }
   };
 
-  const handleRowClick = (row) => {
+  const clearForm = () => { setQuery(''); setComments(''); setConfidence(''); setSelectedId(null); };
+
+  const handleRowClick = (params) => {
+    const row = params.row;
     setSelectedId(row.id);
     setQuery(row.query_txt || '');
     setComments(row.comments_s || '');
     setConfidence(row.confidence_s || '');
   };
 
-  const clearForm = () => {
-    setQuery('');
-    setComments('');
-    setConfidence('');
-    setSelectedId(null);
-  };
+  const columns = [
+    { field: 'query_txt', headerName: 'Query', flex: 1, minWidth: 200 },
+    { field: 'confidence_s', headerName: 'Confidence', width: 120, type: 'number',
+      renderCell: (p) => {
+        const v = Number(p.value);
+        const color = v >= 80 ? '#2e7d32' : v >= 50 ? '#ff6b2b' : v > 0 ? '#e53935' : 'text.secondary';
+        return <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, fontFamily: 'monospace', color }}>{p.value || '—'}</Typography>;
+      },
+    },
+    { field: 'comments_s', headerName: 'Comments', flex: 1, minWidth: 200 },
+  ];
 
   return (
-    <Box p={2}>
-      <Typography variant="h6" gutterBottom>
-        Query Feedback
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Form */}
+      <Paper variant="outlined" sx={{ p: 2.5, mb: 2, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+          <ChatBubbleOutlineRounded sx={{ fontSize: 16, color: '#ff6b2b' }} />
+          <Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>
+            {selectedId ? 'Edit Feedback' : 'Add Feedback'}
+          </Typography>
+          {selectedId && (
+            <Chip size="small" label="Editing" color="warning" sx={{ fontSize: '0.62rem', height: 18 }} />
+          )}
+        </Stack>
+        <Stack direction="row" spacing={1.5} alignItems="flex-start">
+          <TextField
+            size="small" label="Query" value={query} onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            sx={{ flex: 2, minWidth: 180 }}
+          />
+          <TextField
+            size="small" label="Confidence" type="number" value={confidence}
+            onChange={e => setConfidence(e.target.value)}
+            sx={{ width: 120 }}
+          />
+          <TextField
+            size="small" label="Comments" value={comments} onChange={e => setComments(e.target.value)}
+            multiline maxRows={2} sx={{ flex: 3, minWidth: 220 }}
+          />
+          <Stack direction="row" spacing={0.5} sx={{ pt: 0.25 }}>
+            <Tooltip title="Save">
+              <span>
+                <IconButton size="small" color="primary" onClick={handleSave} disabled={!query} sx={{ bgcolor: '#ff6b2b', color: 'white', '&:hover': { bgcolor: '#e85d1f' }, '&.Mui-disabled': { bgcolor: 'action.disabledBackground' } }}>
+                  <SaveRounded sx={{ fontSize: 16 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Delete">
+              <span>
+                <IconButton size="small" color="error" onClick={handleDelete} disabled={!selectedId}>
+                  <DeleteRounded sx={{ fontSize: 16 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Clear">
+              <IconButton size="small" onClick={clearForm}>
+                <ClearRounded sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Paper>
 
-      <Box display="flex" flexDirection="row" gap={2} flexWrap="wrap" mb={2}>
-        <TextField
-          label="Query"
-          variant="outlined"
-          size="small"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          sx={{ minWidth: 200 }}
-        />
-        <TextField
-          label="Confidence Score"
-          type="number"
-          variant="outlined"
-          size="small"
-          value={confidence}
-          onChange={(e) => setConfidence(e.target.value)}
-          sx={{ width: 150 }}
-        />
-        <TextField
-          label="Comments"
-          variant="outlined"
-          size="small"
-          multiline
-          rows={1}
-          value={comments}
-          onChange={(e) => setComments(e.target.value)}
-          sx={{ flex: 1, minWidth: 300 }}
-        />
-        <Box display="flex" gap={1} alignItems="center">
-          <Button variant="contained" onClick={handleSave}>Save</Button>
-          <Button variant="outlined" color="error" onClick={handleDelete} disabled={!selectedId}>
-            Delete
-          </Button>
-          <Button variant="outlined" onClick={clearForm}>Clear</Button>
-          {loading && <CircularProgress size={20} />}
-        </Box>
+      {/* Table */}
+      <Box sx={{ flex: 1, minHeight: 300 }}>
+        {feedbackList.length > 0 ? (
+          <DataGrid
+            rows={feedbackList} columns={columns} loading={loading}
+            pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+            density="compact" disableRowSelectionOnClick
+            onRowClick={handleRowClick}
+            rowSelectionModel={selectedId ? [selectedId] : []}
+            sx={{
+              height: '100%',
+              '& .MuiDataGrid-row': { cursor: 'pointer' },
+              '& .MuiDataGrid-row.Mui-selected': { bgcolor: 'rgba(255,107,43,0.06)' },
+            }}
+          />
+        ) : (
+          <Box sx={{ py: 8, textAlign: 'center' }}>
+            <ChatBubbleOutlineRounded sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+            <Typography sx={{ fontSize: '0.95rem', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>No feedback entries yet</Typography>
+            <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>Add feedback above to track query quality assessments.</Typography>
+          </Box>
+        )}
       </Box>
-
-      <TableContainer sx={{ boxShadow: 'none', backgroundColor: 'transparent' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Query</TableCell>
-              <TableCell>Confidence</TableCell>
-              <TableCell>Comments</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {feedbackList.map((row) => (
-              <TableRow
-                key={row.id}
-                hover
-                selected={selectedId === row.id}
-                onClick={() => handleRowClick(row)}
-                sx={{ cursor: 'pointer' }}
-              >
-                <TableCell>{row.query_txt}</TableCell>
-                <TableCell>{row.confidence_s}</TableCell>
-                <TableCell>{row.comments_s}</TableCell>
-              </TableRow>
-            ))}
-            {!loading && feedbackList.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={3} align="center">
-                  No feedback entries
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
     </Box>
   );
 };

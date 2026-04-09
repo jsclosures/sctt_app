@@ -2,53 +2,59 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Box,
-  Typography,
-  Tabs,
-  Tab,
-  TextField,
-  Button,
-  IconButton,
-  Tooltip,
-  Paper,
-  Grid,
-  Divider,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  CircularProgress,
-  Stack
+  Box, Typography, Tabs, Tab, TextField, Button, Tooltip, Paper,
+  Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress,
+  Stack, Chip, InputAdornment, alpha
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ClearIcon from '@mui/icons-material/Clear';
+import {
+  SearchRounded, CompareArrowsRounded, QueryStatsRounded,
+  InfoOutlined, FormatListNumberedRounded, ChatBubbleOutlineRounded,
+  DownloadRounded, ArrowForwardRounded
+} from '@mui/icons-material';
+import { DataGrid } from '@mui/x-data-grid';
 import SummarizeResults from './SummarizeResults';
 import QueryFeedback from './QueryFeedback';
 import { restGet, ensureAuth } from '@/lib/api';
 import {
-  getSampleQueries,
-  getDetails,
-  getCompareResults
+  getSampleQueries, getDetails, getCompareResults
 } from '@/services/testResultsService';
+import { useThemeConfig } from '../../context/themecontext';
+
+const TAB_ICONS = [
+  <FormatListNumberedRounded sx={{ fontSize: 16 }} />,
+  <InfoOutlined sx={{ fontSize: 16 }} />,
+  <CompareArrowsRounded sx={{ fontSize: 16 }} />,
+  <QueryStatsRounded sx={{ fontSize: 16 }} />,
+  <ChatBubbleOutlineRounded sx={{ fontSize: 16 }} />,
+];
+
+const TAB_LABELS = ['Sample Queries', 'Details', 'Compare', 'Summarize', 'Feedback'];
+
+// ─── Theme-aware compare colors ──────────────────────────────────
+const compareColors = (mode) => ({
+  same:    mode === 'dark' ? { bg: '#1b3a1b', border: '#2e6b2e', text: '#8fd88f' } : { bg: '#e8f5e9', border: '#a5d6a7', text: '#2e7d32' },
+  moved:   mode === 'dark' ? { bg: '#3a3418', border: '#6b6030', text: '#e8d87f' } : { bg: '#fff8e1', border: '#ffe082', text: '#f57f17' },
+  missing: mode === 'dark' ? { bg: '#3a1b1b', border: '#6b2e2e', text: '#d88f8f' } : { bg: '#ffebee', border: '#ef9a9a', text: '#c62828' },
+});
 
 export default function TestResultsPage() {
-  // ─── State ────────────────────────────────────────────────────────
+  const { mode } = useThemeConfig();
+  const colors = compareColors(mode);
+
   const [activeTab, setActiveTab] = useState(0);
   const [tests, setTests] = useState([]);
   const [selectedTest, setSelectedTest] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Sample Queries tab
-  const [queryText, setQueryText] = useState('');
+  // Sample Queries
   const [sampleQueries, setSampleQueries] = useState([]);
   const [sampleFilter, setSampleFilter] = useState('');
   const [sampleTotal, setSampleTotal] = useState(0);
 
-  // Details tab
+  // Details
   const [detailsData, setDetailsData] = useState(null);
 
-  // Compare tab
+  // Compare
   const [compareParentId, setCompareParentId] = useState('');
   const [compareQuery, setCompareQuery] = useState('');
   const [compareLeft, setCompareLeft] = useState([]);
@@ -57,49 +63,35 @@ export default function TestResultsPage() {
   const containerRef = useRef();
   const canvasRef = useRef();
 
-  // ─── Load tests on mount ──────────────────────────────────────────
+  // ─── Load tests ─────────────────────────────────────────────────
   useEffect(() => {
-    const fetchTests = async () => {
+    (async () => {
       try {
         await ensureAuth();
         const data = await restGet({ contenttype: 'TEST', action: 'GET', _rows: 100 });
         const items = data.items || [];
         setTests(items);
-        if (items.length > 0) {
-          setSelectedTest(items[0].testname);
-        }
-      } catch (e) {
-        console.error('Failed to load tests:', e);
-      }
-    };
-    fetchTests();
+        if (items.length > 0) setSelectedTest(items[0].testname);
+      } catch (e) { console.error('Failed to load tests:', e); }
+    })();
   }, []);
 
-  // ─── Load sample queries when test changes ────────────────────────
-  useEffect(() => {
-    if (selectedTest) {
-      fetchSamples();
-    }
-  }, [selectedTest]);
+  // ─── Samples ────────────────────────────────────────────────────
+  useEffect(() => { if (selectedTest) fetchSamples(); }, [selectedTest]);
 
   const fetchSamples = async () => {
     if (!selectedTest) return;
     setLoading(true);
     try {
       const data = await getSampleQueries(selectedTest, sampleFilter, 0, 200);
-      setSampleQueries(data.items);
-      setSampleTotal(data.total);
-    } catch (e) {
-      console.error('Failed to load samples:', e);
-    }
+      setSampleQueries(data.items || []);
+      setSampleTotal(data.total || 0);
+    } catch (e) { console.error('Failed to load samples:', e); }
     setLoading(false);
   };
 
-  // ─── Fetch details when Details tab selected ──────────────────────
   useEffect(() => {
-    if (activeTab === 1 && selectedTest) {
-      fetchDetails();
-    }
+    if (activeTab === 1 && selectedTest) fetchDetails();
   }, [activeTab, selectedTest]);
 
   const fetchDetails = async () => {
@@ -114,7 +106,6 @@ export default function TestResultsPage() {
     setLoading(false);
   };
 
-  // ─── Compare ──────────────────────────────────────────────────────
   const handleCompare = async (parentId, queryTxt) => {
     setCompareParentId(parentId);
     setCompareQuery(queryTxt || parentId);
@@ -123,318 +114,279 @@ export default function TestResultsPage() {
     try {
       const data = await getCompareResults(selectedTest, parentId);
       const items = data.items || [];
-      // Split into BEFORE and AFTER docs
-      const before = items.filter(d => d.contenttype === 'BEFORE');
-      const after = items.filter(d => d.contenttype === 'AFTER');
-      setCompareLeft(before);
-      setCompareRight(after);
-    } catch (e) {
-      console.error('Failed to load compare results:', e);
-    }
+      setCompareLeft(items.filter(d => d.contenttype === 'BEFORE'));
+      setCompareRight(items.filter(d => d.contenttype === 'AFTER'));
+    } catch (e) { console.error('Failed to load compare:', e); }
     setLoading(false);
   };
 
-  const handleCompareSearch = async () => {
-    if (!compareParentId || !selectedTest) return;
-    await handleCompare(compareParentId, compareQuery);
-  };
-
-  // ─── Draw connecting lines for compare view ───────────────────────
   useEffect(() => {
     if (activeTab !== 2) return;
-    const drawLines = () => {
+    const draw = () => {
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
       if (!canvas || !ctx || !containerRef.current) return;
-
-      const leftItems = Array.from(containerRef.current.querySelectorAll('.left-result'));
-      const rightItems = Array.from(containerRef.current.querySelectorAll('.right-result'));
-      const lines = [];
-
-      leftItems.forEach((left) => {
-        const leftId = left.dataset.docid;
-        if (!leftId) return;
-        const matchIndex = rightItems.findIndex((right) => right.dataset.docid === leftId);
-        if (matchIndex !== -1) {
-          const leftRect = left.getBoundingClientRect();
-          const rightRect = rightItems[matchIndex].getBoundingClientRect();
-          const containerRect = containerRef.current.getBoundingClientRect();
-          lines.push({
-            x1: leftRect.right - containerRect.left,
-            y1: leftRect.top + leftRect.height / 2 - containerRect.top,
-            x2: rightRect.left - containerRect.left,
-            y2: rightRect.top + rightRect.height / 2 - containerRect.top
-          });
-        }
-      });
-
-      canvas.width = containerRef.current.clientWidth;
-      canvas.height = containerRef.current.clientHeight;
+      const lefts = Array.from(containerRef.current.querySelectorAll('.left-result'));
+      const rights = Array.from(containerRef.current.querySelectorAll('.right-result'));
+      const cRect = containerRef.current.getBoundingClientRect();
+      canvas.width = cRect.width;
+      canvas.height = cRect.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = '#ff6b2b';
-      ctx.lineWidth = 1;
-      lines.forEach((line) => {
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      lefts.forEach(left => {
+        const id = left.dataset.docid;
+        const right = rights.find(r => r.dataset.docid === id);
+        if (!right) return;
+        const lR = left.getBoundingClientRect();
+        const rR = right.getBoundingClientRect();
         ctx.beginPath();
-        ctx.moveTo(line.x1, line.y1);
-        ctx.lineTo(line.x2, line.y2);
+        ctx.moveTo(lR.right - cRect.left, lR.top + lR.height / 2 - cRect.top);
+        ctx.lineTo(rR.left - cRect.left, rR.top + rR.height / 2 - cRect.top);
         ctx.stroke();
       });
     };
-
-    const timeout = setTimeout(() => requestAnimationFrame(drawLines), 200);
-    return () => clearTimeout(timeout);
+    const t = setTimeout(() => requestAnimationFrame(draw), 250);
+    return () => clearTimeout(t);
   }, [activeTab, compareLeft, compareRight]);
 
-  // ─── Helpers ──────────────────────────────────────────────────────
-  const getTopDocList = (doc) => {
-    if (!doc || !doc.topdoc) return [];
-    return doc.topdoc.split('~').filter(Boolean);
-  };
+  const getTopDocList = (doc) => doc?.topdoc ? doc.topdoc.split('~').filter(Boolean) : [];
 
-  const getMatchColor = (leftDoc, rightDoc) => {
-    if (!leftDoc || !rightDoc) return '#4c1c1c';
-    const leftList = getTopDocList(leftDoc);
-    const rightList = getTopDocList(rightDoc);
-    if (leftList.length === 0 || rightList.length === 0) return '#4c1c1c';
-    const matchCount = leftList.filter(item => rightList.includes(item)).length;
-    if (matchCount === leftList.length) return '#1e4620';
-    if (matchCount > 0) return '#4e4308';
-    return '#4c1c1c';
-  };
+  const EmptyState = ({ icon, title, subtitle }) => (
+    <Box sx={{ py: 8, textAlign: 'center' }}>
+      <Box sx={{ mb: 2, color: 'text.disabled', '& svg': { fontSize: 48 } }}>{icon}</Box>
+      <Typography sx={{ fontSize: '0.95rem', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>{title}</Typography>
+      <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>{subtitle}</Typography>
+    </Box>
+  );
+
+  const sampleColumns = [
+    { field: 'query_txt', headerName: 'Query', flex: 1, minWidth: 200 },
+    { field: 'testname', headerName: 'Test', width: 120 },
+    {
+      field: 'actions', headerName: '', width: 120, sortable: false,
+      renderCell: (params) => (
+        <Button
+          size="small" variant="text"
+          endIcon={<CompareArrowsRounded sx={{ fontSize: 14 }} />}
+          onClick={(e) => { e.stopPropagation(); handleCompare(params.row.id, params.row.query_txt); }}
+          sx={{ fontSize: '0.72rem', textTransform: 'none', color: '#ff6b2b' }}
+        >
+          Compare
+        </Button>
+      ),
+    },
+  ];
 
   return (
-    <Box p={3}>
-      <Stack direction="row" spacing={3} alignItems="center" mb={2}>
-        <Typography variant="h5" fontWeight="bold">Test Results</Typography>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+    <Box sx={{ p: 3, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2.5 }}>
+        <Typography sx={{ fontSize: '1.35rem', fontWeight: 700 }}>Test Results</Typography>
+        <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel>Test</InputLabel>
-          <Select
-            value={selectedTest}
-            label="Test"
-            onChange={(e) => setSelectedTest(e.target.value)}
-          >
-            {tests.map((t) => (
-              <MenuItem key={t.id} value={t.testname}>{t.testname}</MenuItem>
-            ))}
+          <Select value={selectedTest} label="Test" onChange={e => setSelectedTest(e.target.value)}>
+            {tests.map(t => <MenuItem key={t.id} value={t.testname}>{t.testname}</MenuItem>)}
           </Select>
         </FormControl>
-        {loading && <CircularProgress size={20} />}
+        {loading && <CircularProgress size={18} sx={{ color: '#ff6b2b' }} />}
+        <Box sx={{ flex: 1 }} />
+        {selectedTest && (
+          <Chip size="small" label={selectedTest} sx={{ fontFamily: 'monospace', fontWeight: 600, bgcolor: 'rgba(255,107,43,0.08)', color: '#ff6b2b' }} />
+        )}
       </Stack>
-
-      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Sample Queries" />
-        <Tab label="Details" />
-        <Tab label="Compare Results" />
-        <Tab label="Summarize Results" />
-        <Tab label="Query Feedback" />
+      <Tabs
+        value={activeTab} onChange={(_, v) => setActiveTab(v)}
+        variant="scrollable" scrollButtons="auto"
+        sx={{ mb: 2, minHeight: 36, '& .MuiTab-root': { minHeight: 36, py: 0.5, textTransform: 'none', fontSize: '0.82rem' } }}
+      >
+        {TAB_LABELS.map((label, i) => (
+          <Tab key={label} label={label} icon={TAB_ICONS[i]} iconPosition="start" />
+        ))}
       </Tabs>
-
-      {/* ─── Tab 0: Sample Queries ─────────────────────────────────── */}
-      {activeTab === 0 && (
-        <Box>
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center" mb={2}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {activeTab === 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
               <TextField
-                label="Filter Queries"
-                size="small"
-                value={sampleFilter}
-                onChange={(e) => setSampleFilter(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchSamples()}
-                sx={{ flex: 1 }}
+                size="small" placeholder="Filter queries..." value={sampleFilter}
+                onChange={e => setSampleFilter(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && fetchSamples()}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: 18, color: 'text.disabled' }} /></InputAdornment> }}
+                sx={{ flex: 1, maxWidth: 400 }}
               />
-              <Button variant="outlined" size="small" onClick={fetchSamples}>Search</Button>
-              <Button variant="outlined" size="small" onClick={() => { setSampleFilter(''); setTimeout(fetchSamples, 0); }}>Clear</Button>
+              <Button size="small" variant="outlined" onClick={fetchSamples}>Search</Button>
+              <Button size="small" variant="text" onClick={() => { setSampleFilter(''); setTimeout(fetchSamples, 0); }}>Clear</Button>
+              <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>{sampleTotal} queries</Typography>
             </Stack>
-            <Typography variant="caption" color="text.secondary">
-              {sampleTotal} queries found for test "{selectedTest}"
-            </Typography>
-          </Paper>
-
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>Saved Queries</Typography>
-            <Grid container spacing={1}>
-              {sampleQueries.map((item) => (
-                <Grid
-                  key={item.id}
-                  container
-                  item
-                  alignItems="center"
-                  justifyContent="space-between"
-                  sx={{
-                    backgroundColor: 'background.default',
-                    borderRadius: 1,
-                    px: 2, py: 1,
-                    '&:hover': { backgroundColor: 'action.hover' }
-                  }}
-                >
-                  <Grid item xs={6}>
-                    <Typography variant="body2">{item.query_txt}</Typography>
-                  </Grid>
-                  <Grid item>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      sx={{ mr: 1 }}
-                      onClick={() => handleCompare(item.id, item.query_txt)}
-                    >
-                      Compare
-                    </Button>
-                  </Grid>
-                </Grid>
-              ))}
-              {sampleQueries.length === 0 && !loading && (
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
-                    No sample queries found. Run the Build Sample script first.
-                  </Typography>
-                </Grid>
+            <Box sx={{ flex: 1, minHeight: 300 }}>
+              {sampleQueries.length > 0 ? (
+                <DataGrid
+                  rows={sampleQueries} columns={sampleColumns}
+                  pageSizeOptions={[25, 50, 100]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                  density="compact" disableRowSelectionOnClick
+                  sx={{ height: '100%', '& .MuiDataGrid-row': { cursor: 'pointer' } }}
+                  onRowClick={(params) => handleCompare(params.row.id, params.row.query_txt)}
+                />
+              ) : (
+                <EmptyState
+                  icon={<FormatListNumberedRounded />}
+                  title="No sample queries found"
+                  subtitle="Run the Build Sample script to generate sample queries for this test."
+                />
               )}
-            </Grid>
-          </Paper>
-        </Box>
-      )}
-
-      {/* ─── Tab 1: Details ────────────────────────────────────────── */}
-      {activeTab === 1 && (
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            Test Details — {selectedTest}
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          {detailsData && detailsData.items ? (
-            <Box>
-              {detailsData.items.map((item, i) => (
-                <Box key={i} sx={{ mb: 1 }}>
-                  {Object.entries(item).filter(([k]) => !k.startsWith('_')).map(([key, val]) => (
-                    <Typography key={key} variant="body2">
-                      <strong>{key}:</strong> {typeof val === 'object' ? JSON.stringify(val) : String(val)}
-                    </Typography>
-                  ))}
-                  {i < detailsData.items.length - 1 && <Divider sx={{ my: 1 }} />}
-                </Box>
-              ))}
             </Box>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {loading ? 'Loading...' : 'No details available. Select a test and switch to this tab.'}
-            </Typography>
-          )}
-        </Paper>
-      )}
+          </Box>
+        )}
 
-      {/* ─── Tab 2: Compare Results ────────────────────────────────── */}
-      {activeTab === 2 && (
-        <Paper variant="outlined" sx={{ p: 2, position: 'relative' }}>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            Compare Results — {selectedTest}
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-
-          <Stack direction="row" spacing={2} mb={2} alignItems="center">
-            <TextField
-              label="Parent ID / Query ID"
-              variant="outlined"
-              fullWidth
-              size="small"
-              value={compareParentId}
-              onChange={(e) => setCompareParentId(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCompareSearch()}
-            />
-            <Button variant="contained" size="small" onClick={handleCompareSearch}>
-              Compare
-            </Button>
-          </Stack>
-
-          {compareQuery && (
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              Query: <strong>{compareQuery}</strong>
-            </Typography>
-          )}
-
-          {(compareLeft.length > 0 || compareRight.length > 0) && (
-            <Box sx={{ position: 'relative', display: 'flex', justifyContent: 'center' }} ref={containerRef}>
-              <canvas
-                ref={canvasRef}
-                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 1 }}
-              />
-              <Grid container spacing={4} sx={{ zIndex: 2 }}>
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    BEFORE ({compareLeft[0]?.source || ''})
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    QTime: {compareLeft[0]?.qtime} | Rows: {compareLeft[0]?.rowcount}
-                  </Typography>
-                  {getTopDocList(compareLeft[0]).map((docId, idx) => (
-                    <Box
-                      key={idx}
-                      className="left-result"
-                      data-docid={docId}
-                      sx={{
-                        backgroundColor: '#1e4620',
-                        color: 'white',
-                        mb: 0.5, px: 1, py: 0.5,
-                        borderRadius: 1,
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      {idx + 1}. {docId}
-                    </Box>
-                  ))}
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    AFTER ({compareRight[0]?.source || ''})
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    QTime: {compareRight[0]?.qtime} | Rows: {compareRight[0]?.rowcount}
-                  </Typography>
-                  {getTopDocList(compareRight[0]).map((docId, idx) => {
-                    const beforeList = getTopDocList(compareLeft[0]);
-                    const beforeIdx = beforeList.indexOf(docId);
-                    let bg = '#4c1c1c'; // red = not found in before
-                    if (beforeIdx === idx) bg = '#1e4620'; // green = same position
-                    else if (beforeIdx >= 0) bg = '#4e4308'; // yellow = different position
-
-                    return (
-                      <Box
-                        key={idx}
-                        className="right-result"
-                        data-docid={docId}
-                        sx={{
-                          backgroundColor: bg,
-                          color: 'white',
-                          mb: 0.5, px: 1, py: 0.5,
-                          borderRadius: 1,
-                          fontSize: '0.8rem'
-                        }}
-                      >
-                        {idx + 1}. {docId}
+        {activeTab === 1 && (
+          <Box>
+            {detailsData?.items?.length > 0 ? (
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+                {detailsData.items.map((item, i) => (
+                  <Paper key={i} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+                    {Object.entries(item).filter(([k]) => !k.startsWith('_')).map(([key, val]) => (
+                      <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 'none' } }}>
+                        <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{key}</Typography>
+                        <Typography sx={{ fontSize: '0.82rem', fontFamily: 'monospace', fontWeight: 500, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-all' }}>
+                          {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                        </Typography>
                       </Box>
-                    );
-                  })}
-                </Grid>
-              </Grid>
-            </Box>
-          )}
+                    ))}
+                  </Paper>
+                ))}
+              </Box>
+            ) : (
+              <EmptyState
+                icon={<InfoOutlined />}
+                title="No details available"
+                subtitle={loading ? 'Loading details...' : 'Run the Details script to generate test statistics.'}
+              />
+            )}
+          </Box>
+        )}
 
-          {compareLeft.length === 0 && compareRight.length === 0 && !loading && (
-            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-              Select a query from Sample Queries or Summarize Results to compare BEFORE vs AFTER.
-            </Typography>
-          )}
-        </Paper>
-      )}
+        {activeTab === 2 && (
+          <Box>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
+              <TextField
+                size="small" fullWidth placeholder="Enter Parent ID or Query ID..."
+                value={compareParentId}
+                onChange={e => setCompareParentId(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCompare(compareParentId, compareQuery)}
+              />
+              <Button variant="contained" size="small" onClick={() => handleCompare(compareParentId, compareQuery)} disabled={!compareParentId}>
+                Compare
+              </Button>
+            </Stack>
 
-      {/* ─── Tab 3: Summarize Results ──────────────────────────────── */}
-      {activeTab === 3 && (
-        <SummarizeResults testName={selectedTest} onCompare={handleCompare} />
-      )}
+            {compareQuery && (
+              <Paper variant="outlined" sx={{ px: 2, py: 1.5, mb: 2.5, display: 'flex', alignItems: 'center', gap: 1, borderRadius: 2 }}>
+                <SearchRounded sx={{ fontSize: 16, color: 'text.disabled' }} />
+                <Typography sx={{ fontSize: '0.82rem', color: 'text.secondary' }}>Query:</Typography>
+                <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, fontFamily: 'monospace' }}>{compareQuery}</Typography>
+              </Paper>
+            )}
 
-      {/* ─── Tab 4: Query Feedback ─────────────────────────────────── */}
-      {activeTab === 4 && (
-        <QueryFeedback testName={selectedTest} />
-      )}
+            {(compareLeft.length > 0 || compareRight.length > 0) ? (
+              <Box>
+                {/* Legend */}
+                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                  {[
+                    { label: 'Same position', c: colors.same },
+                    { label: 'Moved', c: colors.moved },
+                    { label: 'Missing', c: colors.missing },
+                  ].map(({ label, c }) => (
+                    <Stack key={label} direction="row" spacing={0.75} alignItems="center">
+                      <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: c.bg, border: '1px solid', borderColor: c.border }} />
+                      <Typography sx={{ fontSize: '0.68rem', color: 'text.secondary' }}>{label}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+
+                <Box sx={{ position: 'relative' }} ref={containerRef}>
+                  <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }} />
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', gap: 0, zIndex: 2, position: 'relative' }}>
+                    {/* BEFORE column */}
+                    <Box>
+                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                          <Chip size="small" label="BEFORE" sx={{ fontSize: '0.65rem', fontWeight: 700, bgcolor: colors.same.bg, color: colors.same.text, height: 20 }} />
+                          <Typography sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>{compareLeft[0]?.source || ''}</Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={2}>
+                          <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>QTime: <strong>{compareLeft[0]?.qtime ?? '—'}</strong></Typography>
+                          <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>Rows: <strong>{compareLeft[0]?.rowcount ?? '—'}</strong></Typography>
+                        </Stack>
+                      </Paper>
+                      {getTopDocList(compareLeft[0]).map((docId, idx) => (
+                        <Box key={idx} className="left-result" data-docid={docId} sx={{
+                          bgcolor: colors.same.bg, border: '1px solid', borderColor: colors.same.border, color: colors.same.text,
+                          mb: 0.5, px: 1.5, py: 0.75, borderRadius: 1.5, fontSize: '0.78rem', fontFamily: 'monospace',
+                          display: 'flex', alignItems: 'center', gap: 1,
+                        }}>
+                          <Chip size="small" label={idx + 1} sx={{ fontSize: '0.6rem', fontWeight: 700, height: 18, minWidth: 18, bgcolor: alpha(colors.same.text, 0.15), color: colors.same.text }} />
+                          <Typography sx={{ fontSize: '0.76rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{docId}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+
+                    {/* Center spacer with arrow */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <ArrowForwardRounded sx={{ color: 'text.disabled', fontSize: 20 }} />
+                    </Box>
+
+                    {/* AFTER column */}
+                    <Box>
+                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                          <Chip size="small" label="AFTER" sx={{ fontSize: '0.65rem', fontWeight: 700, bgcolor: 'rgba(255,107,43,0.08)', color: '#ff6b2b', height: 20 }} />
+                          <Typography sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>{compareRight[0]?.source || ''}</Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={2}>
+                          <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>QTime: <strong>{compareRight[0]?.qtime ?? '—'}</strong></Typography>
+                          <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>Rows: <strong>{compareRight[0]?.rowcount ?? '—'}</strong></Typography>
+                        </Stack>
+                      </Paper>
+                      {getTopDocList(compareRight[0]).map((docId, idx) => {
+                        const beforeList = getTopDocList(compareLeft[0]);
+                        const beforeIdx = beforeList.indexOf(docId);
+                        let c = colors.missing;
+                        if (beforeIdx === idx) c = colors.same;
+                        else if (beforeIdx >= 0) c = colors.moved;
+
+                        return (
+                          <Box key={idx} className="right-result" data-docid={docId} sx={{
+                            bgcolor: c.bg, border: '1px solid', borderColor: c.border, color: c.text,
+                            mb: 0.5, px: 1.5, py: 0.75, borderRadius: 1.5, fontSize: '0.78rem', fontFamily: 'monospace',
+                            display: 'flex', alignItems: 'center', gap: 1,
+                          }}>
+                            <Chip size="small" label={idx + 1} sx={{ fontSize: '0.6rem', fontWeight: 700, height: 18, minWidth: 18, bgcolor: alpha(c.text, 0.15), color: c.text }} />
+                            <Typography sx={{ fontSize: '0.76rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{docId}</Typography>
+                            {beforeIdx >= 0 && beforeIdx !== idx && (
+                              <Chip size="small" label={`was #${beforeIdx + 1}`} sx={{ ml: 'auto', fontSize: '0.58rem', height: 16, bgcolor: alpha(c.text, 0.1), color: c.text }} />
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+            ) : (
+              <EmptyState
+                icon={<CompareArrowsRounded />}
+                title="No comparison loaded"
+                subtitle="Select a query from Sample Queries or Summarize to compare BEFORE vs AFTER results."
+              />
+            )}
+          </Box>
+        )}
+
+        {activeTab === 3 && <SummarizeResults testName={selectedTest} onCompare={handleCompare} />}
+
+        {activeTab === 4 && <QueryFeedback testName={selectedTest} />}
+      </Box>
     </Box>
   );
 }

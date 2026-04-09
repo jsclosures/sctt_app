@@ -1,27 +1,23 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Typography,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TableContainer,
-  TableSortLabel,
-  Tooltip,
-  Button,
-  Stack,
-  CircularProgress
+  Box, Typography, TextField, Button, Stack, Chip, InputAdornment, alpha
 } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
+import {
+  SearchRounded, DownloadRounded, CompareArrowsRounded, QueryStatsRounded
+} from '@mui/icons-material';
 import { getSummaryResults, downloadSummary } from '@/services/testResultsService';
 
-const getDeltaColor = (value) => {
-  if (value > 100 || value < -100) return 'red';
-  if (value !== 0) return 'orange';
-  return 'inherit';
+const DeltaCell = ({ value }) => {
+  const v = Number(value) || 0;
+  const color = v > 100 || v < -100 ? '#e53935' : v !== 0 ? '#ff6b2b' : 'text.secondary';
+  const prefix = v > 0 ? '+' : '';
+  return (
+    <Typography sx={{ fontSize: '0.78rem', fontWeight: v !== 0 ? 600 : 400, color, fontFamily: 'monospace' }}>
+      {v !== 0 ? `${prefix}${v}` : '—'}
+    </Typography>
+  );
 };
 
 const SummarizeResults = ({ testName, onCompare }) => {
@@ -29,204 +25,144 @@ const SummarizeResults = ({ testName, onCompare }) => {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState('differencescore');
-  const [sortDirection, setSortDirection] = useState('desc');
-  const [page, setPage] = useState(0);
-  const pageSize = 20;
+  const [sortModel, setSortModel] = useState([{ field: 'differencescore', sort: 'desc' }]);
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 });
 
   const fetchData = async () => {
     if (!testName) return;
     setLoading(true);
     try {
-      const data = await getSummaryResults(
-        testName,
-        queryInput,
-        page,
-        pageSize,
-        sortBy,
-        sortDirection === 'asc'
-      );
-      setRows(data.items);
-      setTotal(data.total);
-    } catch (e) {
-      console.error('Failed to load summary:', e);
-    }
+      const sortField = sortModel[0]?.field || 'differencescore';
+      const ascending = sortModel[0]?.sort === 'asc';
+      const data = await getSummaryResults(testName, queryInput, paginationModel.page, paginationModel.pageSize, sortField, ascending);
+      setRows((data.items || []).map((r, i) => ({ ...r, id: r.id || `row-${i}` })));
+      setTotal(data.total || 0);
+    } catch (e) { console.error('Failed to load summary:', e); }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [testName, sortBy, sortDirection, page]);
+  useEffect(() => { fetchData(); }, [testName, sortModel, paginationModel]);
 
-  const handleSearch = () => {
-    setPage(0);
-    fetchData();
-  };
-
-  const handleSort = (column) => {
-    if (sortBy === column) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortBy(column);
-      setSortDirection('desc');
-    }
-  };
-
-  const handleClear = () => {
-    setQueryInput('');
-    setPage(0);
-    setTimeout(fetchData, 0);
-  };
+  const handleSearch = () => { setPaginationModel(p => ({ ...p, page: 0 })); fetchData(); };
+  const handleClear = () => { setQueryInput(''); setPaginationModel(p => ({ ...p, page: 0 })); setTimeout(fetchData, 0); };
 
   const handleDownload = async () => {
     if (!testName) return;
-    try {
-      await downloadSummary(testName);
-    } catch (e) {
-      console.error('Download failed:', e);
-    }
+    try { await downloadSummary(testName); } catch (e) { console.error('Download failed:', e); }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleSearch();
-  };
+  const columns = [
+    {
+      field: 'query_txt', headerName: 'Query', flex: 1, minWidth: 180,
+      renderCell: (p) => (
+        <Typography sx={{ fontSize: '0.78rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {p.value}
+        </Typography>
+      ),
+    },
+    {
+      field: 'matchscore', headerName: 'Match Score', width: 110, type: 'number',
+      renderCell: (p) => <DeltaCell value={p.value} />,
+    },
+    {
+      field: 'qtime', headerName: 'Δ QTime', width: 100, type: 'number',
+      description: 'Query time delta (before - after)',
+      renderCell: (p) => <DeltaCell value={p.value} />,
+    },
+    {
+      field: 'qtimeb', headerName: 'Before', width: 90, type: 'number',
+      renderCell: (p) => <Typography sx={{ fontSize: '0.78rem', fontFamily: 'monospace', color: 'text.secondary' }}>{p.value ?? '—'}</Typography>,
+    },
+    {
+      field: 'qtimea', headerName: 'After', width: 90, type: 'number',
+      renderCell: (p) => <Typography sx={{ fontSize: '0.78rem', fontFamily: 'monospace', color: 'text.secondary' }}>{p.value ?? '—'}</Typography>,
+    },
+    {
+      field: 'differencescore', headerName: 'Δ Count', width: 100, type: 'number',
+      description: 'Row count delta',
+      renderCell: (p) => <DeltaCell value={p.value} />,
+    },
+    {
+      field: 'rowcountb', headerName: 'Before Ct', width: 100, type: 'number',
+      renderCell: (p) => <Typography sx={{ fontSize: '0.78rem', fontFamily: 'monospace', color: 'text.secondary' }}>{p.value ?? p.row.rowcountbefore ?? '—'}</Typography>,
+    },
+    {
+      field: 'rowcounta', headerName: 'After Ct', width: 100, type: 'number',
+      renderCell: (p) => <Typography sx={{ fontSize: '0.78rem', fontFamily: 'monospace', color: 'text.secondary' }}>{p.value ?? p.row.rowcountafter ?? '—'}</Typography>,
+    },
+    {
+      field: 'actions', headerName: '', width: 100, sortable: false,
+      renderCell: (p) => (
+        <Button
+          size="small" variant="text"
+          endIcon={<CompareArrowsRounded sx={{ fontSize: 13 }} />}
+          onClick={(e) => { e.stopPropagation(); onCompare?.(p.row.parentid || p.row.id, p.row.query_txt); }}
+          sx={{ fontSize: '0.7rem', textTransform: 'none', color: '#ff6b2b' }}
+        >
+          Compare
+        </Button>
+      ),
+    },
+  ];
 
   if (!testName) {
     return (
-      <Box p={2}>
-        <Typography color="text.secondary">Select a test to view summary results.</Typography>
+      <Box sx={{ py: 8, textAlign: 'center' }}>
+        <QueryStatsRounded sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+        <Typography sx={{ fontSize: '0.95rem', fontWeight: 600, color: 'text.secondary' }}>Select a test to view summary results</Typography>
       </Box>
     );
   }
 
   return (
-    <Box p={2}>
-      <Typography variant="h6" gutterBottom>
-        Summarize Results — {testName}
-      </Typography>
-
-      <Stack direction="row" spacing={2} mb={2} alignItems="center">
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Toolbar */}
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
         <TextField
-          label="Query"
-          size="small"
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+          size="small" placeholder="Search queries..." value={queryInput}
+          onChange={e => setQueryInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: 18, color: 'text.disabled' }} /></InputAdornment> }}
+          sx={{ flex: 1, maxWidth: 350 }}
         />
-        <Button onClick={handleSearch} variant="outlined" size="small">Search</Button>
-        <Button onClick={handleClear} variant="outlined" size="small">Clear</Button>
-        <Button onClick={handleDownload} variant="contained" size="small">Download CSV</Button>
-        {loading && <CircularProgress size={20} />}
-        <Typography variant="caption" color="text.secondary">
-          {total} results
-        </Typography>
+        <Button size="small" variant="outlined" onClick={handleSearch}>Search</Button>
+        <Button size="small" variant="text" onClick={handleClear}>Clear</Button>
+        <Box sx={{ flex: 1 }} />
+        <Chip size="small" label={`${total} results`} sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
+        <Button
+          size="small" variant="contained" startIcon={<DownloadRounded sx={{ fontSize: 14 }} />}
+          onClick={handleDownload}
+          sx={{ textTransform: 'none', fontSize: '0.76rem' }}
+        >
+          CSV
+        </Button>
       </Stack>
 
-      <TableContainer sx={{ boxShadow: 'none', backgroundColor: 'transparent' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>
-                <TableSortLabel
-                  active={sortBy === 'query_txt'}
-                  direction={sortDirection}
-                  onClick={() => handleSort('query_txt')}
-                >
-                  Query
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <Tooltip title="Match Score — how much result ordering changed">
-                  <TableSortLabel
-                    active={sortBy === 'matchscore'}
-                    direction={sortDirection}
-                    onClick={() => handleSort('matchscore')}
-                  >
-                    MScore
-                  </TableSortLabel>
-                </Tooltip>
-              </TableCell>
-              <TableCell>
-                <Tooltip title="QTime delta (before minus after)">
-                  <TableSortLabel
-                    active={sortBy === 'qtime'}
-                    direction={sortDirection}
-                    onClick={() => handleSort('qtime')}
-                  >
-                    Δ QTime
-                  </TableSortLabel>
-                </Tooltip>
-              </TableCell>
-              <TableCell>Before</TableCell>
-              <TableCell>After</TableCell>
-              <TableCell>
-                <Tooltip title="Row count delta">
-                  <TableSortLabel
-                    active={sortBy === 'differencescore'}
-                    direction={sortDirection}
-                    onClick={() => handleSort('differencescore')}
-                  >
-                    Δ Count
-                  </TableSortLabel>
-                </Tooltip>
-              </TableCell>
-              <TableCell>Before Ct</TableCell>
-              <TableCell>After Ct</TableCell>
-              <TableCell>Compare</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row, i) => (
-              <TableRow key={row.id || i} hover sx={{ cursor: 'pointer' }}>
-                <TableCell>{row.query_txt}</TableCell>
-                <TableCell sx={{ color: getDeltaColor(row.matchscore || 0) }}>
-                  {row.matchscore ?? '—'}
-                </TableCell>
-                <TableCell sx={{ color: getDeltaColor(row.qtime || 0) }}>
-                  {row.qtime ?? '—'}
-                </TableCell>
-                <TableCell>{row.qtimeb ?? '—'}</TableCell>
-                <TableCell>{row.qtimea ?? '—'}</TableCell>
-                <TableCell sx={{ color: getDeltaColor(row.rowcount || 0) }}>
-                  {row.rowcount ?? '—'}
-                </TableCell>
-                <TableCell>{row.rowcountb ?? row.rowcountbefore ?? '—'}</TableCell>
-                <TableCell>{row.rowcounta ?? row.rowcountafter ?? '—'}</TableCell>
-                <TableCell>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => onCompare && onCompare(row.parentid || row.id, row.query_txt)}
-                  >
-                    Compare
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {!loading && rows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={9} align="center">
-                  No summary data found. Run the summarize script first.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {total > pageSize && (
-        <Stack direction="row" spacing={2} mt={2} justifyContent="center">
-          <Button disabled={page === 0} onClick={() => setPage(p => p - 1)} size="small">
-            Previous
-          </Button>
-          <Typography variant="caption" sx={{ lineHeight: '30px' }}>
-            Page {page + 1} of {Math.ceil(total / pageSize)}
-          </Typography>
-          <Button disabled={(page + 1) * pageSize >= total} onClick={() => setPage(p => p + 1)} size="small">
-            Next
-          </Button>
-        </Stack>
-      )}
+      {/* DataGrid */}
+      <Box sx={{ flex: 1, minHeight: 400 }}>
+        <DataGrid
+          rows={rows} columns={columns} loading={loading}
+          rowCount={total} paginationMode="server"
+          paginationModel={paginationModel} onPaginationModelChange={setPaginationModel}
+          sortingMode="server" sortModel={sortModel} onSortModelChange={setSortModel}
+          pageSizeOptions={[10, 25, 50]} density="compact" disableRowSelectionOnClick
+          onRowClick={(p) => onCompare?.(p.row.parentid || p.row.id, p.row.query_txt)}
+          sx={{
+            height: '100%',
+            '& .MuiDataGrid-row': { cursor: 'pointer' },
+            '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255,107,43,0.04)' },
+          }}
+          slots={{
+            noRowsOverlay: () => (
+              <Box sx={{ py: 8, textAlign: 'center' }}>
+                <QueryStatsRounded sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+                <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>No summary data found</Typography>
+                <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled' }}>Run the Summarize script first to generate results.</Typography>
+              </Box>
+            ),
+          }}
+        />
+      </Box>
     </Box>
   );
 };
