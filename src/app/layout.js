@@ -1,6 +1,6 @@
 'use client';
 
-import { UserProvider } from '@auth0/nextjs-auth0/client';
+//import { UserProvider } from '@auth0/nextjs-auth0/client';
 import { CssBaseline, Box } from '@mui/material';
 import Sidebar from '../components/layout/Sidebar';
 import Topbar from '../components/layout/Topbar';
@@ -14,7 +14,6 @@ export default function ProtectedLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <UserProvider>
           <ThemeConfigProvider>
             <AppProvider>
               <SetupGuard>
@@ -31,7 +30,6 @@ export default function ProtectedLayout({ children }) {
               </SetupGuard>
             </AppProvider>
           </ThemeConfigProvider>
-        </UserProvider>
       </body>
     </html>
   );

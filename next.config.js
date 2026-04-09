@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  devIndicators: false,
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8180';
-
     return {
       beforeFiles: [
         {

@@ -51,7 +51,7 @@ export default function Sidebar() {
         {!collapsed && (
           <ListItemText
             primary={item.label}
-            primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: isActive ? 600 : 500 }}
+            primarytypographyprops={{ fontSize: '0.82rem', fontWeight: isActive ? 600 : 500 }}
           />
         )}
       </ListItemButton>
