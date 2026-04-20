@@ -61,7 +61,7 @@ export async function getCompareResults(testName, parentId) {
     contenttype: 'COMPARE',
     testname: testName,
   };
-  if (parentId) params.parentid = parentId;
+  if (parentId) params.parentid = encodeURIComponent(parentId);
   const data = await restGet(params);
   return {
     items: data.items || [],
