@@ -88,7 +88,18 @@ export default function ScriptRunnerPage() {
 
   const handleRun = async () => {
     if (!selectedTestName) { showMessage('Select a test first', 'error'); return; }
-    const inputStr = buildArgsString(args);
+
+    const sendArgs = { ...args };
+    if (sendArgs.csvData && sendArgs.csvData.trim()) {
+      sendArgs.csvData = sendArgs.csvData
+        .split('\n')
+        .map(q => q.trim())
+        .filter(Boolean)
+        .map(q => q.replace(/ /g, '+'))
+        .join('\n');
+    }
+
+    const inputStr = buildArgsString(sendArgs);
     const label = runnerTypes.find(r => r.type === selectedType)?.label || selectedType;
     setRunning(true);
     addOutput(`Running "${label}" for "${selectedTestName}"...`, 'system');
@@ -235,13 +246,17 @@ export default function ScriptRunnerPage() {
               gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
               gap: 1.5, px: 2, pb: 2,
             }}>
-              {argKeys.map(key => (
-                <TextField
-                  key={key} size="small" label={key}
-                  value={args[key] || ''}
-                  onChange={e => setArgs(prev => ({ ...prev, [key]: e.target.value }))}
-                />
-              ))}
+            {argKeys.map(key => (
+              <TextField
+                key={key} size="small" label={key}
+                value={args[key] || ''}
+                onChange={e => setArgs(prev => ({ ...prev, [key]: e.target.value }))}
+                multiline={key === 'csvData'}
+                minRows={key === 'csvData' ? 3 : 1}
+                placeholder={key === 'csvData' ? 'One query per line:\nwater filter\noil filter\nbrake pads' : ''}
+                sx={key === 'csvData' ? { gridColumn: '1 / -1' } : {}}
+              />
+            ))}
             </Box>
           </Collapse>
         </Paper>
