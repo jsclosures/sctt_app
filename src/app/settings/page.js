@@ -150,7 +150,6 @@ export default function SettingsPage() {
                 display: 'flex', alignItems: 'center', gap: 1.25,
                 cursor: 'pointer',
                 bgcolor: active ? 'rgba(255,107,43,0.08)' : 'transparent',
-                borderLeft: `2px solid ${active ? '#ff6b2b' : 'transparent'}`,
                 transition: 'all 0.1s',
                 '&:hover': { bgcolor: active ? 'rgba(255,107,43,0.1)' : 'action.hover' },
               }}>

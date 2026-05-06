@@ -236,7 +236,6 @@ export default function AssetsPage() {
                       px: 1.5, py: 1, mx: 0.75, mb: 0.25, borderRadius: 1.5,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 1.25,
                       bgcolor: isSelected ? 'rgba(255,107,43,0.08)' : 'transparent',
-                      borderLeft: `2px solid ${isSelected ? '#ff6b2b' : 'transparent'}`,
                       transition: 'all 0.1s',
                       '&:hover': { bgcolor: isSelected ? 'rgba(255,107,43,0.1)' : 'action.hover' },
                     }}
