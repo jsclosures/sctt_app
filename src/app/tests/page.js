@@ -4,31 +4,27 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, TextField, Select, MenuItem, Tabs, Tab,
   Button, IconButton, Tooltip, Snackbar, Alert, Chip, Stack,
-  Paper, Dialog, DialogTitle, DialogContent, DialogActions
+  Paper, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputAdornment, Divider
 } from '@mui/material';
 import {
-  LinkRounded, EditRounded, VisibilityRounded, LinkOffRounded, CloseRounded
+  LinkRounded, VisibilityRounded, LinkOffRounded, CloseRounded,
+  SaveRounded, DeleteRounded, ContentCopyRounded, AddRounded,
+  SearchRounded, CodeRounded, NotesRounded, DownloadRounded,
+  FullscreenRounded, FullscreenExitRounded
 } from '@mui/icons-material';
-import { DataGrid } from '@mui/x-data-grid';
 import Editor, { loader } from '@monaco-editor/react';
-import { ResizableBox } from 'react-resizable';
-import 'react-resizable/css/styles.css';
-import FullscreenIcon from '@mui/icons-material/Fullscreen';
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import {
   getTests, saveTest, deleteTest, deleteAllTestData,
-  exportAllTests, createEmptyTest, getScriptTabs, refreshScriptTabs,
+  exportAllTests, createEmptyTest, refreshScriptTabs,
 } from '@/services/testService';
 import { getAssets } from '@/services/assetService';
 import { useThemeConfig } from '../../context/themecontext';
-import { fromBase64 } from '@/lib/api';
 
 let monacoThemesDefined = false;
-
 loader.init().then((monaco) => {
   if (monacoThemesDefined) return;
   monacoThemesDefined = true;
-
   monaco.editor.defineTheme('sctt-dark', {
     base: 'vs-dark', inherit: true,
     rules: [
@@ -43,7 +39,6 @@ loader.init().then((monaco) => {
       'editorIndentGuide.background': '#30363d', 'editor.selectionBackground': '#264f78',
     },
   });
-
   monaco.editor.defineTheme('sctt-light', {
     base: 'vs', inherit: true,
     rules: [
@@ -58,7 +53,6 @@ loader.init().then((monaco) => {
       'editor.lineHighlightBackground': '#f3f3f3', 'editorCursor.foreground': '#ff6b2b',
       'editorIndentGuide.background': '#e0e0e0', 'editor.selectionBackground': '#add6ff',
       'editorLineNumber.foreground': '#b0b0b0', 'editorLineNumber.activeForeground': '#ff6b2b',
-      'editor.lineHighlightBorder': '#e8e8e8',
     },
   });
 });
@@ -66,29 +60,28 @@ loader.init().then((monaco) => {
 export default function TestsPage() {
   const { mode } = useThemeConfig();
   const editorTheme = mode === 'dark' ? 'sctt-dark' : 'sctt-light';
+  const isDark = mode === 'dark';
 
-  const [scriptTabs, setScriptTabs] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [current, setCurrent] = useState({ id: '', name: '', comments: '', sample: '' });
-  const [tabValue, setTabValue] = useState(0);
-  const [editorHeight, setEditorHeight] = useState(300);
-  const [fullScreen, setFullScreen] = useState(false);
-  const [tests, setTests] = useState([]);
-  const [totalTests, setTotalTests] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [selectedRowIds, setSelectedRowIds] = useState([]);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [scriptTabs, setScriptTabs]   = useState([]);
+  const [assets, setAssets]           = useState([]);
+  const [current, setCurrent]         = useState({ id: '', name: '', comments: '', sample: '' });
+  const [tabValue, setTabValue]       = useState(0);
+  const [fullScreen, setFullScreen]   = useState(false);
+  const [tests, setTests]             = useState([]);
+  const [totalTests, setTotalTests]   = useState(0);
+  const [loading, setLoading]         = useState(false);
+  const [selectedId, setSelectedId]   = useState(null);
+  const [search, setSearch]           = useState('');
+  const [snackbar, setSnackbar]       = useState({ open: false, message: '', severity: 'info' });
+  const [viewDialog, setViewDialog]   = useState({ open: false, assetName: '', script: '', loading: false });
 
-  // View script dialog
-  const [viewDialog, setViewDialog] = useState({ open: false, assetName: '', script: '', loading: false });
+  const showMessage = (msg, sev = 'info') => setSnackbar({ open: true, message: msg, severity: sev });
 
   useEffect(() => {
     async function init() {
       const tabs = await refreshScriptTabs();
       setScriptTabs(tabs);
       setCurrent(createEmptyTest(tabs));
-      // Also load assets for the dropdown
       try {
         const { items } = await getAssets(0, 200);
         setAssets(items);
@@ -97,76 +90,67 @@ export default function TestsPage() {
     init();
   }, []);
 
-  const showMessage = (message, severity = 'info') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
   const fetchTests = useCallback(async () => {
     setLoading(true);
     try {
-      const { items, total } = await getTests(paginationModel.page, paginationModel.pageSize);
+      const { items, total } = await getTests(0, 100);
       setTests(items);
       setTotalTests(total);
-    } catch (err) {
-      console.error('Failed to fetch tests:', err);
+    } catch {
       showMessage('Failed to load tests', 'error');
     } finally {
       setLoading(false);
     }
-  }, [paginationModel.page, paginationModel.pageSize]);
+  }, []);
 
   useEffect(() => { fetchTests(); }, [fetchTests]);
 
-  const handleRowClick = (params) => {
-    const test = tests.find(t => t.id === params.id);
-    if (test) {
-      setCurrent({ ...test });
-      setSelectedRowIds([test.id]);
-      showMessage(`Loaded "${test.name}"`, 'info');
-    }
+  const handleSelect = (test) => {
+    setCurrent({ ...test });
+    setSelectedId(test.id);
+    setTabValue(0);
+  };
+
+  const handleNew = () => {
+    setCurrent(createEmptyTest(scriptTabs));
+    setSelectedId(null);
   };
 
   const handleSave = async () => {
     if (!current.name.trim()) { showMessage('Name is required', 'error'); return; }
     try {
       await saveTest(current);
-      showMessage(`Test "${current.name}" saved`, 'success');
+      showMessage(`"${current.name}" saved`, 'success');
       setTimeout(fetchTests, 600);
-    } catch { showMessage('Failed to save test', 'error'); }
+    } catch { showMessage('Failed to save', 'error'); }
   };
 
   const handleDelete = async () => {
-    if (selectedRowIds.length === 0) { showMessage('No test selected', 'error'); return; }
-    const toDelete = tests.filter(t => selectedRowIds.includes(t.id));
+    if (!selectedId) return;
+    const test = tests.find(t => t.id === selectedId);
     try {
-      for (const test of toDelete) await deleteTest(test.id);
-      showMessage(`Deleted: ${toDelete.map(t => t.name).join(', ')}`, 'success');
+      await deleteTest(selectedId);
+      showMessage(`Deleted "${test?.name}"`, 'success');
       setCurrent(createEmptyTest(scriptTabs));
-      setSelectedRowIds([]);
+      setSelectedId(null);
       setTimeout(fetchTests, 600);
     } catch { showMessage('Failed to delete', 'error'); }
   };
 
-  const handleReset = () => {
-    setCurrent(createEmptyTest(scriptTabs));
-    setSelectedRowIds([]);
-  };
-
   const handleDuplicate = () => {
-    if (selectedRowIds.length !== 1) return;
-    const test = tests.find(t => t.id === selectedRowIds[0]);
+    const test = tests.find(t => t.id === selectedId);
     if (!test) return;
     setCurrent({ ...test, id: '', name: test.name + ' (copy)' });
-    setSelectedRowIds([]);
+    setSelectedId(null);
     showMessage('Duplicated — edit name and save', 'info');
   };
 
   const handleDeleteAllData = async () => {
-    if (!current.name.trim()) { showMessage('Select a test first', 'error'); return; }
+    if (!current.name.trim()) return;
     try {
       await deleteAllTestData(current.name);
-      showMessage(`All data for "${current.name}" deleted`, 'success');
-    } catch { showMessage('Failed to delete test data', 'error'); }
+      showMessage(`Result data for "${current.name}" cleared`, 'success');
+    } catch { showMessage('Failed to clear data', 'error'); }
   };
 
   const handleExportAll = async () => {
@@ -179,332 +163,436 @@ export default function TestsPage() {
       document.body.appendChild(a); a.click();
       document.body.removeChild(a); URL.revokeObjectURL(url);
       showMessage('Exported all tests', 'success');
-    } catch { showMessage('Failed to export', 'error'); }
+    } catch { showMessage('Export failed', 'error'); }
   };
 
-  // ─── Asset linking helpers ──────────────────────────────────────
+  // ─── Asset linking ────────────────────────────────────────────
 
   const getFieldValue = (field) => current[field] || '';
-
-  const isAssetRef = (field) => {
-    const val = getFieldValue(field);
-    return val.startsWith('ASSET:');
-  };
-
-  const getAssetRefName = (field) => {
-    const val = getFieldValue(field);
-    return val.startsWith('ASSET:') ? val.substring(6) : '';
-  };
-
-  const linkAsset = (field, assetName) => {
-    setCurrent(p => ({ ...p, [field]: `ASSET:${assetName}` }));
-  };
-
-  const unlinkAsset = (field) => {
-    setCurrent(p => ({ ...p, [field]: '' }));
-  };
+  const isAssetRef = (field) => getFieldValue(field).startsWith('ASSET:');
+  const getAssetRefName = (field) => getFieldValue(field).replace('ASSET:', '');
+  const linkAsset = (field, name) => setCurrent(p => ({ ...p, [field]: `ASSET:${name}` }));
+  const unlinkAsset = (field) => setCurrent(p => ({ ...p, [field]: '' }));
 
   const handleViewScript = async (assetName) => {
     setViewDialog({ open: true, assetName, script: '', loading: true });
     try {
-      const asset = assets.find(a => a.name === assetName);
-      if (asset && asset.script) {
-        setViewDialog(d => ({ ...d, script: asset.script, loading: false }));
-      } else {
-        // Fetch fresh
-        const { items } = await getAssets(0, 200);
-        const found = items.find(a => a.name === assetName);
-        setViewDialog(d => ({ ...d, script: found?.script || '// Asset not found', loading: false }));
-      }
+      const { items } = await getAssets(0, 200);
+      const found = items.find(a => a.name === assetName);
+      setViewDialog(d => ({ ...d, script: found?.script || '// Asset not found', loading: false }));
     } catch {
-      setViewDialog(d => ({ ...d, script: '// Failed to load asset', loading: false }));
+      setViewDialog(d => ({ ...d, script: '// Failed to load', loading: false }));
     }
   };
 
-  // ─── Render ─────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────
 
   if (scriptTabs.length === 0) return null;
 
-  const activeTab = scriptTabs[tabValue];
-  const isNotesTab = activeTab?.id === 'notes';
-  const isLinked = !isNotesTab && isAssetRef(activeTab?.field);
-  const linkedAssetName = isLinked ? getAssetRefName(activeTab?.field) : '';
-
-  const columns = [
-    { field: 'name', headerName: 'Name', flex: 1 },
-    { field: 'comments', headerName: 'Comments', flex: 1 },
-  ];
+  const activeTab   = scriptTabs[tabValue];
+  const isNotesTab  = activeTab?.id === 'notes';
+  const isLinked    = !isNotesTab && isAssetRef(activeTab?.field);
+  const linkedName  = isLinked ? getAssetRefName(activeTab?.field) : '';
+  const filtered    = search ? tests.filter(t => t.name?.toLowerCase().includes(search.toLowerCase())) : tests;
+  const scriptAssets = assets.filter(a => a.type === 'script');
 
   return (
-    <Box sx={{ p: 3, height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5">Tests</Typography>
-        <Chip
-          size="small"
-          label={`${scriptTabs.length - 1} pipeline stages`}
-          sx={{ bgcolor: 'rgba(255,107,43,0.08)', color: '#ff6b2b', fontWeight: 600 }}
-        />
-      </Stack>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <TextField fullWidth size="small" label="Name" value={current.name} onChange={e => setCurrent(p => ({ ...p, name: e.target.value }))} />
-          <Select value="script" size="small" sx={{ minWidth: 140 }}>
-            <MenuItem value="script">Script</MenuItem>
-            <MenuItem value="other">Other</MenuItem>
-          </Select>
-          <TextField fullWidth size="small" label="Sample Queries" value={current.sample} onChange={e => setCurrent(p => ({ ...p, sample: e.target.value }))} />
+      {/* ── Top bar ───────────────────────────────────────────── */}
+      <Box sx={{
+        px: 3, py: 1.5, display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', borderBottom: '1px solid',
+        borderColor: 'divider', flexShrink: 0, minHeight: 52,
+      }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
+            Tests
+          </Typography>
+          {!loading && totalTests > 0 && (
+            <Chip size="small" label={totalTests}
+              sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, borderRadius: '5px' }} />
+          )}
+          {scriptTabs.length > 1 && (
+            <Chip size="small"
+              label={`${scriptTabs.length - 1} pipeline stages`}
+              sx={{ height: 18, fontSize: '0.62rem', bgcolor: 'rgba(255,107,43,0.08)', color: '#ff6b2b', borderRadius: '5px' }}
+            />
+          )}
+        </Stack>
+        <Stack direction="row" spacing={0.75}>
+          <Button size="small" variant="contained"
+            startIcon={<SaveRounded sx={{ fontSize: 14 }} />}
+            onClick={handleSave} disabled={!current.name.trim()}
+            sx={{ textTransform: 'none', fontSize: '0.78rem', height: 30, px: 1.5 }}>
+            Save
+          </Button>
+          <Tooltip title="New test">
+            <IconButton size="small" onClick={handleNew}
+              sx={{ height: 30, width: 30, border: '1px solid', borderColor: 'divider' }}>
+              <AddRounded sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Duplicate">
+            <span>
+              <IconButton size="small" onClick={handleDuplicate} disabled={!selectedId}
+                sx={{ height: 30, width: 30, border: '1px solid', borderColor: 'divider' }}>
+                <ContentCopyRounded sx={{ fontSize: 14 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Delete test">
+            <span>
+              <IconButton size="small" onClick={handleDelete} disabled={!selectedId}
+                sx={{ height: 30, width: 30, border: '1px solid', borderColor: 'divider',
+                  '&:not(:disabled):hover': { borderColor: 'error.main', color: 'error.main' } }}>
+                <DeleteRounded sx={{ fontSize: 14 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Clear result data for this test">
+            <span>
+              <IconButton size="small" onClick={handleDeleteAllData} disabled={!current.name.trim()}
+                sx={{ height: 30, width: 30, border: '1px solid', borderColor: 'divider',
+                  '&:not(:disabled):hover': { borderColor: 'warning.main', color: 'warning.main' } }}>
+                <DeleteRounded sx={{ fontSize: 14 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Export all tests">
+            <IconButton size="small" onClick={handleExportAll}
+              sx={{ height: 30, width: 30, border: '1px solid', borderColor: 'divider' }}>
+              <DownloadRounded sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </Box>
+
+      {/* ── Body: split panel ─────────────────────────────────── */}
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* ── LEFT: test list ──────────────────────────────────── */}
+        <Box sx={{
+          width: 252, flexShrink: 0, display: 'flex', flexDirection: 'column',
+          borderRight: '1px solid', borderColor: 'divider',
+        }}>
+          <Box sx={{ p: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <TextField
+              size="small" fullWidth placeholder="Filter..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchRounded sx={{ fontSize: 15, color: 'text.disabled' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { fontSize: '0.78rem', height: 32 },
+                }
+              }}
+            />
+          </Box>
+
+          <Box sx={{ flex: 1, overflow: 'auto', py: 0.5 }}>
+            {loading ? (
+              <Box sx={{ px: 2, py: 3, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>Loading...</Typography>
+              </Box>
+            ) : filtered.length === 0 ? (
+              <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>
+                  {search ? 'No matches' : 'No tests yet'}
+                </Typography>
+              </Box>
+            ) : filtered.map(test => {
+              const isSelected = selectedId === test.id;
+              return (
+                <Box
+                  key={test.id}
+                  onClick={() => handleSelect(test)}
+                  sx={{
+                    px: 1.5, py: 1, mx: 0.75, mb: 0.25, borderRadius: 1.5,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 1.25,
+                    bgcolor: isSelected ? 'rgba(255,107,43,0.08)' : 'transparent',
+                    borderLeft: `2px solid ${isSelected ? '#ff6b2b' : 'transparent'}`,
+                    transition: 'all 0.1s',
+                    '&:hover': { bgcolor: isSelected ? 'rgba(255,107,43,0.1)' : 'action.hover' },
+                  }}
+                >
+                  <Box sx={{
+                    width: 24, height: 24, borderRadius: '6px', flexShrink: 0,
+                    bgcolor: isSelected ? 'rgba(255,107,43,0.15)' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <CodeRounded sx={{ fontSize: 13, color: isSelected ? '#ff6b2b' : 'text.disabled' }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{
+                      fontSize: '0.78rem', fontWeight: isSelected ? 600 : 400,
+                      color: isSelected ? '#ff6b2b' : 'text.primary',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}>
+                      {test.name}
+                    </Typography>
+                    {test.comments && (
+                      <Typography sx={{ fontSize: '0.62rem', color: 'text.disabled',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {test.comments}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
         </Box>
 
-        <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 1 }}>
-          {scriptTabs.map(tab => (
-            <Tab
-              key={tab.id}
-              label={tab.label}
-              icon={!isNotesTab && tab.field && isAssetRef(tab.field) ? <LinkRounded sx={{ fontSize: 14 }} /> : undefined}
-              iconPosition="start"
-              sx={{ textTransform: 'none', minHeight: 40 }}
+        {/* ── RIGHT: editor ────────────────────────────────────── */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+
+          {/* Test metadata: name, comments, sample */}
+          <Box sx={{
+            px: 2.5, py: 1.25, display: 'flex', alignItems: 'center',
+            gap: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0,
+          }}>
+            <TextField size="small" placeholder="Test name..."
+              value={current.name}
+              onChange={e => setCurrent(p => ({ ...p, name: e.target.value }))}
+              sx={{ width: 200, '& .MuiOutlinedInput-root': { fontSize: '0.85rem', height: 32 } }}
             />
-          ))}
-        </Tabs>
+            <TextField size="small" placeholder="Comments..."
+              value={current.comments || ''}
+              onChange={e => setCurrent(p => ({ ...p, comments: e.target.value }))}
+              sx={{ flex: 1, '& .MuiOutlinedInput-root': { fontSize: '0.82rem', height: 32 } }}
+            />
+            <TextField size="small" placeholder="Sample queries..."
+              value={current.sample || ''}
+              onChange={e => setCurrent(p => ({ ...p, sample: e.target.value }))}
+              sx={{ width: 180, '& .MuiOutlinedInput-root': { fontSize: '0.82rem', height: 32 } }}
+            />
+          </Box>
 
-        {/* ── Notes tab ──────────────────────────────────────── */}
-        {isNotesTab && (
-          <TextField
-            fullWidth multiline rows={6} placeholder="Enter notes..."
-            value={current[activeTab.field] || ''}
-            onChange={e => setCurrent(p => ({ ...p, [activeTab.field]: e.target.value }))}
-          />
-        )}
-
-        {/* ── Script tab: Linked to Asset ────────────────────── */}
-        {!isNotesTab && isLinked && (
-          <Paper sx={{ p: 3 }}>
-            <Stack spacing={2}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <LinkRounded sx={{ color: '#ff6b2b', fontSize: 20 }} />
-                <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: 'text.primary' }}>
-                  Linked to Asset
-                </Typography>
-              </Stack>
-
-              <Paper variant="outlined" sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Chip
-                    label={linkedAssetName}
-                    size="small"
-                    sx={{ fontWeight: 600, fontFamily: 'monospace', bgcolor: 'rgba(255,107,43,0.08)', color: '#ff6b2b' }}
-                  />
-                  <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                    Script will be loaded from this asset at runtime
-                  </Typography>
-                </Stack>
-                <Stack direction="row" spacing={1}>
-                  <Tooltip title="View asset script">
-                    <Button
-                      size="small" variant="outlined"
-                      startIcon={<VisibilityRounded />}
-                      onClick={() => handleViewScript(linkedAssetName)}
-                    >
-                      View Script
-                    </Button>
-                  </Tooltip>
-                  <Tooltip title="Unlink — switch to inline script">
-                    <Button
-                      size="small" variant="outlined" color="error"
-                      startIcon={<LinkOffRounded />}
-                      onClick={() => unlinkAsset(activeTab.field)}
-                    >
-                      Unlink
-                    </Button>
-                  </Tooltip>
-                </Stack>
-              </Paper>
-
-              <Box>
-                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', mb: 1 }}>
-                  Change linked asset
-                </Typography>
-                <Select
-                  size="small" fullWidth
-                  value={linkedAssetName}
-                  onChange={e => linkAsset(activeTab.field, e.target.value)}
-                >
-                  {assets.filter(a => a.type === 'script').map(a => (
-                    <MenuItem key={a.id} value={a.name}>{a.name}</MenuItem>
-                  ))}
-                </Select>
-              </Box>
-
-              {/* Args field */}
-              {activeTab.argsField && (
-                <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', mb: 1 }}>
-                    Script Arguments
-                  </Typography>
-                  <TextField
-                    fullWidth size="small" multiline minRows={2}
-                    placeholder="key=value key2=value2"
-                    value={current[activeTab.argsField] || ''}
-                    onChange={e => setCurrent(p => ({ ...p, [activeTab.argsField]: e.target.value }))}
-                    sx={{ '& .MuiOutlinedInput-root': { fontFamily: 'monospace', fontSize: '0.82rem' } }}
-                  />
-                </Box>
-              )}
-            </Stack>
-          </Paper>
-        )}
-
-        {/* ── Script tab: Inline script (no ASSET: ref) ──────── */}
-        {!isNotesTab && !isLinked && (
-          <Box>
-            {/* Link to asset option */}
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary' }}>
-                Inline Script
-              </Typography>
-              <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>or</Typography>
-              <Select
-                size="small"
-                displayEmpty
-                value=""
-                onChange={e => { if (e.target.value) linkAsset(activeTab.field, e.target.value); }}
-                sx={{ minWidth: 180, '& .MuiSelect-select': { fontSize: '0.78rem', py: 0.5 } }}
-              >
-                <MenuItem value="" disabled>Link to an asset...</MenuItem>
-                {assets.filter(a => a.type === 'script').map(a => (
-                  <MenuItem key={a.id} value={a.name}>{a.name}</MenuItem>
-                ))}
-              </Select>
-            </Stack>
-
-            <Box sx={{
-              position: 'relative', border: '1px solid', borderRadius: 1, overflow: 'hidden',
-              borderColor: mode === 'dark' ? '#09090a' : '#e0e0e0',
-              bgcolor: mode === 'dark' ? '#1c1c1e' : '#fafafa',
-            }}>
-              <Tooltip title={fullScreen ? 'Exit Full Screen' : 'Full Screen'}>
-                <IconButton
-                  onClick={() => setFullScreen(!fullScreen)} size="small"
-                  sx={{ position: 'absolute', top: 6, right: 6, zIndex: 10, color: '#ff6b2b' }}
-                >
-                  {fullScreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                </IconButton>
-              </Tooltip>
-              <ResizableBox
-                width={Infinity}
-                height={fullScreen ? window.innerHeight - 200 : editorHeight}
-                minConstraints={[Infinity, 150]}
-                maxConstraints={[Infinity, fullScreen ? window.innerHeight - 200 : 800]}
-                axis="y" resizeHandles={['s']}
-                onResizeStop={(_, data) => setEditorHeight(data.size.height)}
-              >
-                <Editor
-                  height="100%" defaultLanguage="javascript" theme={editorTheme}
-                  value={current[activeTab.field] || ''}
-                  onChange={val => setCurrent(p => ({ ...p, [activeTab.field]: val || '' }))}
-                  options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false, automaticLayout: true }}
+          {/* Pipeline stage tabs */}
+          <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+            <Tabs
+              value={tabValue} onChange={(_, v) => setTabValue(v)}
+              variant="scrollable" scrollButtons="auto"
+              sx={{
+                minHeight: 36, px: 1,
+                '& .MuiTab-root': { minHeight: 36, py: 0, textTransform: 'none', fontSize: '0.75rem', px: 1.5 },
+              }}
+            >
+              {scriptTabs.map((tab, i) => (
+                <Tab
+                  key={tab.id}
+                  label={tab.label}
+                  icon={tab.id !== 'notes' && isAssetRef(tab.field)
+                    ? <LinkRounded sx={{ fontSize: 11, color: '#ff6b2b' }} />
+                    : undefined}
+                  iconPosition="end"
+                  sx={{ gap: 0.5 }}
                 />
-              </ResizableBox>
-            </Box>
+              ))}
+            </Tabs>
+          </Box>
 
-            {/* Args field for inline too */}
-            {activeTab.argsField && (
-              <Box sx={{ mt: 1.5 }}>
-                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.secondary', mb: 0.5 }}>
-                  Script Arguments
-                </Typography>
+          {/* Tab content */}
+          <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+            {/* Notes tab */}
+            {isNotesTab && (
+              <Box sx={{ p: 2.5, flex: 1 }}>
                 <TextField
-                  fullWidth size="small"
-                  placeholder="key=value key2=value2"
-                  value={current[activeTab.argsField] || ''}
-                  onChange={e => setCurrent(p => ({ ...p, [activeTab.argsField]: e.target.value }))}
-                  sx={{ '& .MuiOutlinedInput-root': { fontFamily: 'monospace', fontSize: '0.82rem' } }}
+                  multiline fullWidth
+                  placeholder="Test notes — purpose, configurations, dependencies..."
+                  value={current[activeTab.field] || ''}
+                  onChange={e => setCurrent(p => ({ ...p, [activeTab.field]: e.target.value }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': { fontSize: '0.85rem', lineHeight: 1.75 },
+                    '& textarea': { minHeight: '200px !important' },
+                  }}
                 />
               </Box>
             )}
+
+            {/* Script tab: LINKED */}
+            {!isNotesTab && isLinked && (
+              <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* Linked asset card */}
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.5,
+                  p: 1.75, borderRadius: 2, border: '1px solid',
+                  borderColor: 'rgba(255,107,43,0.2)', bgcolor: 'rgba(255,107,43,0.04)',
+                }}>
+                  <Box sx={{
+                    width: 30, height: 30, borderRadius: '8px', flexShrink: 0,
+                    bgcolor: 'rgba(255,107,43,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <LinkRounded sx={{ fontSize: 16, color: '#ff6b2b' }} />
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled', mb: 0.25 }}>
+                      Linked to asset
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, fontFamily: 'monospace', color: '#ff6b2b' }}>
+                      {linkedName}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.75}>
+                    <Button size="small" variant="outlined"
+                      startIcon={<VisibilityRounded sx={{ fontSize: 13 }} />}
+                      onClick={() => handleViewScript(linkedName)}
+                      sx={{ textTransform: 'none', fontSize: '0.72rem', height: 28 }}>
+                      View
+                    </Button>
+                    <Button size="small" variant="outlined" color="error"
+                      startIcon={<LinkOffRounded sx={{ fontSize: 13 }} />}
+                      onClick={() => unlinkAsset(activeTab.field)}
+                      sx={{ textTransform: 'none', fontSize: '0.72rem', height: 28 }}>
+                      Unlink
+                    </Button>
+                  </Stack>
+                </Box>
+
+                {/* Change asset */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled', mb: 0.75 }}>
+                    Change asset
+                  </Typography>
+                  <Select size="small" fullWidth value={linkedName}
+                    onChange={e => linkAsset(activeTab.field, e.target.value)}
+                    sx={{ fontSize: '0.8rem' }}>
+                    {scriptAssets.map(a => (
+                      <MenuItem key={a.id} value={a.name} sx={{ fontSize: '0.8rem' }}>{a.name}</MenuItem>
+                    ))}
+                  </Select>
+                </Box>
+
+                {/* Args */}
+                {activeTab.argsField && (
+                  <Box>
+                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled', mb: 0.75 }}>
+                      Script Arguments
+                    </Typography>
+                    <TextField
+                      fullWidth size="small" multiline minRows={3}
+                      placeholder="key=value key2=value2"
+                      value={current[activeTab.argsField] || ''}
+                      onChange={e => setCurrent(p => ({ ...p, [activeTab.argsField]: e.target.value }))}
+                      sx={{ '& .MuiOutlinedInput-root': { fontFamily: 'monospace', fontSize: '0.8rem' } }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {/* Script tab: INLINE */}
+            {!isNotesTab && !isLinked && (
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Link to asset bar */}
+                <Box sx={{
+                  px: 2.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.5,
+                  borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0,
+                  bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
+                }}>
+                  <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    Inline
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>·</Typography>
+                  <Select size="small" displayEmpty value=""
+                    onChange={e => { if (e.target.value) linkAsset(activeTab.field, e.target.value); }}
+                    sx={{ height: 26, fontSize: '0.72rem', '& .MuiSelect-select': { py: 0.5 } }}
+                    renderValue={() => <span style={{ color: 'var(--mui-palette-text-disabled)' }}>Link to asset...</span>}
+                  >
+                    {scriptAssets.map(a => (
+                      <MenuItem key={a.id} value={a.name} sx={{ fontSize: '0.78rem' }}>{a.name}</MenuItem>
+                    ))}
+                  </Select>
+                  <Box sx={{ flex: 1 }} />
+                  <Tooltip title={fullScreen ? 'Exit fullscreen' : 'Fullscreen'}>
+                    <IconButton size="small" onClick={() => setFullScreen(p => !p)}
+                      sx={{ color: 'text.disabled', '&:hover': { color: '#ff6b2b' } }}>
+                      {fullScreen ? <FullscreenExitRounded sx={{ fontSize: 16 }} /> : <FullscreenRounded sx={{ fontSize: 16 }} />}
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+
+                {/* Monaco editor */}
+                <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 200 }}>
+                  <Editor
+                    height="100%"
+                    defaultLanguage="javascript"
+                    theme={editorTheme}
+                    value={current[activeTab.field] || ''}
+                    onChange={val => setCurrent(p => ({ ...p, [activeTab.field]: val || '' }))}
+                    options={{
+                      minimap: { enabled: false }, fontSize: 13, lineHeight: 20,
+                      scrollBeyondLastLine: false, automaticLayout: true,
+                      padding: { top: 10, bottom: 10 },
+                      scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 },
+                    }}
+                  />
+                </Box>
+
+                {/* Args below editor */}
+                {activeTab.argsField && (
+                  <Box sx={{ px: 2.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled', mb: 0.75 }}>
+                      Script Arguments
+                    </Typography>
+                    <TextField
+                      fullWidth size="small"
+                      placeholder="key=value key2=value2"
+                      value={current[activeTab.argsField] || ''}
+                      onChange={e => setCurrent(p => ({ ...p, [activeTab.argsField]: e.target.value }))}
+                      sx={{ '& .MuiOutlinedInput-root': { fontFamily: 'monospace', fontSize: '0.8rem', height: 32 } }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
           </Box>
-        )}
-
-        {/* ── Action buttons ─────────────────────────────────── */}
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button variant="contained" size="small" onClick={handleSave}>Save</Button>
-          <Tooltip title="Delete selected">
-            <span><Button variant="outlined" color="error" size="small" onClick={handleDelete} disabled={selectedRowIds.length === 0}>
-              Delete{selectedRowIds.length > 1 ? ` (${selectedRowIds.length})` : ''}
-            </Button></span>
-          </Tooltip>
-          <Tooltip title="Clear form">
-            <span><Button variant="outlined" size="small" onClick={handleReset} disabled={selectedRowIds.length === 0 && !current.id}>Reset</Button></span>
-          </Tooltip>
-          <Tooltip title="Duplicate selected">
-            <span><Button variant="outlined" size="small" onClick={handleDuplicate} disabled={selectedRowIds.length !== 1}>Duplicate</Button></span>
-          </Tooltip>
-          <Tooltip title="Delete all result data for this test">
-            <span><Button variant="outlined" color="error" size="small" onClick={handleDeleteAllData} disabled={!current.name.trim()}>Delete Test Data</Button></span>
-          </Tooltip>
-          <Button variant="outlined" size="small" onClick={handleExportAll}>Export All</Button>
-          {selectedRowIds.length > 0 && (
-            <Typography variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>{selectedRowIds.length} selected</Typography>
-          )}
-        </Box>
-
-        {/* ── Tests table ────────────────────────────────────── */}
-        <Box sx={{ flexGrow: 1, minHeight: 250 }}>
-          <DataGrid
-            rows={tests} columns={columns} loading={loading}
-            rowCount={totalTests} paginationMode="server"
-            paginationModel={paginationModel} onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[10, 50, 100]} checkboxSelection
-            onRowSelectionModelChange={(sel) => {
-              let ids = [];
-              if (Array.isArray(sel)) ids = sel;
-              else if (sel && typeof sel[Symbol.iterator] === 'function') ids = [...sel];
-              setSelectedRowIds(ids);
-              if (ids.length === 1) {
-                const test = tests.find(t => t.id === ids[0]);
-                if (test) setCurrent({ ...test });
-              }
-            }}
-            onRowClick={handleRowClick}
-            sx={{ height: '100%', '& .MuiDataGrid-row': { cursor: 'pointer' } }}
-          />
         </Box>
       </Box>
 
-      {/* ── View Script Dialog ───────────────────────────────── */}
+      {/* ── View Script Dialog ────────────────────────────────── */}
       <Dialog open={viewDialog.open} onClose={() => setViewDialog(d => ({ ...d, open: false }))} maxWidth="lg" fullWidth>
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
           <Stack direction="row" spacing={1} alignItems="center">
-            <VisibilityRounded sx={{ fontSize: 18, color: '#ff6b2b' }} />
-            <Typography sx={{ fontWeight: 600 }}>{viewDialog.assetName}</Typography>
-            <Chip size="small" label="Read Only" sx={{ fontSize: '0.65rem', height: 20 }} />
+            <VisibilityRounded sx={{ fontSize: 16, color: '#ff6b2b' }} />
+            <Typography sx={{ fontWeight: 600, fontSize: '0.9rem' }}>{viewDialog.assetName}</Typography>
+            <Chip size="small" label="Read Only" sx={{ fontSize: '0.6rem', height: 18 }} />
           </Stack>
           <IconButton size="small" onClick={() => setViewDialog(d => ({ ...d, open: false }))}>
-            <CloseRounded />
+            <CloseRounded sx={{ fontSize: 18 }} />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ p: 0, height: 500 }}>
+        <DialogContent sx={{ p: 0, height: 520 }}>
           {viewDialog.loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-              <Typography color="text.secondary">Loading...</Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: 'text.secondary' }}>Loading...</Typography>
             </Box>
           ) : (
-            <Editor
-              height="100%" defaultLanguage="javascript" theme={editorTheme}
+            <Editor height="100%" defaultLanguage="javascript" theme={editorTheme}
               value={viewDialog.script}
-              options={{ readOnly: true, minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false }}
+              options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, padding: { top: 10 } }}
             />
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewDialog(d => ({ ...d, open: false }))}>Close</Button>
+        <DialogActions sx={{ py: 1 }}>
+          <Button size="small" onClick={() => setViewDialog(d => ({ ...d, open: false }))}
+            sx={{ textTransform: 'none', fontSize: '0.78rem' }}>
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ── Snackbar ─────────────────────────────────────────── */}
-      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setSnackbar(s => ({ ...s, open: false }))} severity={snackbar.severity} variant="filled" sx={{ width: '100%' }}>
+      <Snackbar open={snackbar.open} autoHideDuration={3000}
+        onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+          severity={snackbar.severity} variant="filled" sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
       </Snackbar>

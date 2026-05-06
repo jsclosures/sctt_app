@@ -2,364 +2,343 @@
 
 import { useState } from 'react';
 import {
-  Box,
-  Typography,
-  Tabs,
-  Tab,
-  TextField,
-  Button,
-  Paper,
-  Stack,
-  CircularProgress,
-  Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow
+  Box, Typography, TextField, Button, Stack, Chip,
+  CircularProgress, Tabs, Tab,
+  Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow
 } from '@mui/material';
 import {
-  getRealTimeMetrics,
-  getPageMetrics,
-  collectMetrics
-} from '@/services/analyzeService';
+  PlayArrowRounded, NavigateBeforeRounded, NavigateNextRounded,
+  FirstPageRounded, BarChartRounded, SpeedRounded, DatasetRounded
+} from '@mui/icons-material';
+import { getRealTimeMetrics, getPageMetrics, collectMetrics } from '@/services/analyzeService';
+import { useThemeConfig } from '../../context/themecontext';
 
 const DEFAULT_REGEX = '^[a-zA-Z0-9._/]+$';
 
+const TABS = [
+  { label: 'Real Time',    icon: <SpeedRounded sx={{ fontSize: 14 }} /> },
+  { label: 'Page Metrics', icon: <BarChartRounded sx={{ fontSize: 14 }} /> },
+  { label: 'Metrics',      icon: <DatasetRounded sx={{ fontSize: 14 }} /> },
+];
+
+const Field = ({ label, value, onChange, placeholder, monospace }) => (
+  <Box>
+    <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled', mb: 0.5 }}>
+      {label}
+    </Typography>
+    <TextField size="small" fullWidth value={value} onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.78rem', ...(monospace ? { fontFamily: 'monospace' } : {}) } }}
+    />
+  </Box>
+);
+
+function ResultsTable({ rows, isDark }) {
+  if (!rows || rows.length === 0) return (
+    <Box sx={{ py: 6, textAlign: 'center' }}>
+      <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>No results</Typography>
+    </Box>
+  );
+  return (
+    <TableContainer sx={{ maxHeight: '100%', overflow: 'auto' }}>
+      <Table size="small" stickyHeader>
+        <TableHead>
+          <TableRow>
+            {Object.keys(rows[0]).map(k => (
+              <TableCell key={k} sx={{
+                fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: 'text.disabled',
+                bgcolor: isDark ? '#111112' : '#f9f9fa',
+                borderBottom: '1px solid', borderColor: 'divider',
+                py: 1, px: 1.5,
+              }}>
+                {k}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+              {Object.values(row).map((val, j) => (
+                <TableCell key={j} sx={{
+                  fontSize: '0.74rem', fontFamily: 'monospace',
+                  py: 0.75, px: 1.5, borderColor: 'divider',
+                  maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+function flattenMetrics(obj, prefix = '') {
+  const rows = [];
+  if (!obj || typeof obj !== 'object') return rows;
+  for (const [key, val] of Object.entries(obj)) {
+    const path = prefix ? `${prefix} › ${key}` : key;
+    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+      rows.push(...flattenMetrics(val, path));
+    } else {
+      rows.push({ path, value: Array.isArray(val) ? val.join(', ') : String(val ?? '') });
+    }
+  }
+  return rows;
+}
+
+function parseResult(data) {
+  if (!data || data.error) return { error: data?.error || 'Unknown error', rows: [] };
+  let parsed = data;
+  if (data.payload) {
+    try { parsed = JSON.parse(data.payload); } catch { return { rows: [], raw: data.payload }; }
+  }
+  if (parsed.response?.docs) {
+    const docs = parsed.response.docs;
+    if (docs.length === 0) return { rows: [] };
+    const keys = Object.keys(docs[0]).filter(k => !k.startsWith('_'));
+    return { rows: docs.map(d => Object.fromEntries(keys.map(k => [k, d[k]]))) };
+  }
+  if (parsed.docs && Array.isArray(parsed.docs)) {
+    return { rows: flattenMetrics(parsed.docs[0] || {}).map(r => ({ 'Metric Path': r.path, Value: r.value })) };
+  }
+  return { rows: flattenMetrics(parsed).map(r => ({ 'Metric Path': r.path, Value: r.value })) };
+}
+
 export default function AnalyzePage() {
+  const { mode } = useThemeConfig();
+  const isDark = mode === 'dark';
+
   const [activeTab, setActiveTab] = useState(0);
 
-  // ─── Real Time state ──────────────────────────────────────────────
-  const [rtKey, setRtKey] = useState('');
-  const [rtUrl, setRtUrl] = useState('');
+  const [rtKey, setRtKey]               = useState('');
+  const [rtUrl, setRtUrl]               = useState('');
   const [rtCollection, setRtCollection] = useState(DEFAULT_REGEX);
-  const [rtHandler, setRtHandler] = useState(DEFAULT_REGEX);
-  const [rtMetric, setRtMetric] = useState(DEFAULT_REGEX);
-  const [rtResult, setRtResult] = useState(null);
-  const [rtLoading, setRtLoading] = useState(false);
+  const [rtHandler, setRtHandler]       = useState(DEFAULT_REGEX);
+  const [rtMetric, setRtMetric]         = useState(DEFAULT_REGEX);
+  const [rtResult, setRtResult]         = useState(null);
+  const [rtLoading, setRtLoading]       = useState(false);
 
-  // ─── Page Metrics state ───────────────────────────────────────────
-  const [pmTestName, setPmTestName] = useState('');
-  const [pmCollection, setPmCollection] = useState(DEFAULT_REGEX);
-  const [pmHandler, setPmHandler] = useState(DEFAULT_REGEX);
-  const [pmMetric, setPmMetric] = useState(DEFAULT_REGEX);
-  const [pmPage, setPmPage] = useState(0);
-  const [pmResult, setPmResult] = useState(null);
-  const [pmLoading, setPmLoading] = useState(false);
+  const [pmTestName, setPmTestName]     = useState('');
+  const [pmPage, setPmPage]             = useState(0);
+  const [pmResult, setPmResult]         = useState(null);
+  const [pmLoading, setPmLoading]       = useState(false);
 
-  // ─── Metrics state ────────────────────────────────────────────────
-  const [mTestName, setMTestName] = useState('');
-  const [mCollection, setMCollection] = useState(DEFAULT_REGEX);
-  const [mHandler, setMHandler] = useState(DEFAULT_REGEX);
-  const [mMetric, setMMetric] = useState(DEFAULT_REGEX);
-  const [mResult, setMResult] = useState(null);
-  const [mLoading, setMLoading] = useState(false);
+  const [mTestName, setMTestName]       = useState('');
+  const [mCollection, setMCollection]   = useState(DEFAULT_REGEX);
+  const [mHandler, setMHandler]         = useState(DEFAULT_REGEX);
+  const [mMetric, setMMetric]           = useState(DEFAULT_REGEX);
+  const [mResult, setMResult]           = useState(null);
+  const [mLoading, setMLoading]         = useState(false);
 
-  // ─── Real Time handlers ───────────────────────────────────────────
-  const handleAnalyze = async () => {
-    setRtLoading(true);
-    setRtResult(null);
+  const handleRealTime = async () => {
+    setRtLoading(true); setRtResult(null);
     try {
       const data = await getRealTimeMetrics(rtUrl || undefined);
-      setRtResult(data);
-    } catch (e) {
-      console.error('Real Time fetch failed:', e);
-      setRtResult({ error: e.message });
-    }
+      const collRe = new RegExp(rtCollection || '.*');
+      const handRe = new RegExp(rtHandler || '.*');
+      const metRe  = new RegExp(rtMetric || '.*');
+      const keyRe  = rtKey ? new RegExp(rtKey) : null;
+      const metrics = data?.metrics || data;
+      const filtered = {};
+      for (const [gk, gv] of Object.entries(metrics || {})) {
+        if (keyRe && !keyRe.test(gk)) continue;
+        if (!collRe.test(gk)) continue;
+        if (typeof gv !== 'object') continue;
+        const fg = {};
+        for (const [hk, hv] of Object.entries(gv)) {
+          if (!handRe.test(hk) || typeof hv !== 'object') continue;
+          const fh = {};
+          for (const [mk, mv] of Object.entries(hv)) {
+            if (metRe.test(mk)) fh[mk] = mv;
+          }
+          if (Object.keys(fh).length) fg[hk] = fh;
+        }
+        if (Object.keys(fg).length) filtered[gk] = fg;
+      }
+      setRtResult(filtered);
+    } catch (e) { setRtResult({ error: e.message }); }
     setRtLoading(false);
   };
 
-  // Filter RT results client-side using the regex fields
-  const filterMetrics = (data) => {
-    if (!data || data.error) return null;
-
-    try {
-      const collRe = new RegExp(rtCollection || '.*');
-      const handRe = new RegExp(rtHandler || '.*');
-      const metRe = new RegExp(rtMetric || '.*');
-      const keyRe = rtKey ? new RegExp(rtKey) : null;
-
-      const metrics = data.metrics || data;
-      const filtered = {};
-
-      for (const [groupKey, groupVal] of Object.entries(metrics)) {
-        if (keyRe && !keyRe.test(groupKey)) continue;
-        if (!collRe.test(groupKey)) continue;
-
-        if (typeof groupVal === 'object' && groupVal !== null) {
-          const filteredGroup = {};
-          for (const [handlerKey, handlerVal] of Object.entries(groupVal)) {
-            if (!handRe.test(handlerKey)) continue;
-            if (typeof handlerVal === 'object' && handlerVal !== null) {
-              const filteredHandler = {};
-              for (const [metricKey, metricVal] of Object.entries(handlerVal)) {
-                if (!metRe.test(metricKey)) continue;
-                filteredHandler[metricKey] = metricVal;
-              }
-              if (Object.keys(filteredHandler).length > 0) {
-                filteredGroup[handlerKey] = filteredHandler;
-              }
-            }
-          }
-          if (Object.keys(filteredGroup).length > 0) {
-            filtered[groupKey] = filteredGroup;
-          }
-        }
-      }
-      return filtered;
-    } catch (e) {
-      return data;
-    }
-  };
-
-  // ─── Page Metrics handlers ────────────────────────────────────────
-  const handlePageMetricsStart = async () => {
-    setPmPage(0);
-    await fetchPageMetrics(0);
-  };
-
-  const handlePageMetricsPrev = async () => {
-    const newPage = Math.max(0, pmPage - 1);
-    setPmPage(newPage);
-    await fetchPageMetrics(newPage);
-  };
-
-  const handlePageMetricsNext = async () => {
-    const newPage = pmPage + 1;
-    setPmPage(newPage);
-    await fetchPageMetrics(newPage);
-  };
-
   const fetchPageMetrics = async (page) => {
-    setPmLoading(true);
-    setPmResult(null);
+    setPmLoading(true); setPmResult(null);
     try {
       const data = await getPageMetrics(pmTestName, page, 1);
       setPmResult(data);
-    } catch (e) {
-      console.error('Page Metrics fetch failed:', e);
-      setPmResult({ error: e.message });
-    }
+    } catch (e) { setPmResult({ error: e.message }); }
     setPmLoading(false);
   };
 
-  // ─── Collect Metrics handler ──────────────────────────────────────
   const handleCollect = async () => {
-    setMLoading(true);
-    setMResult(null);
+    setMLoading(true); setMResult(null);
     try {
       const data = await collectMetrics(mTestName, mCollection, mHandler, mMetric);
       setMResult(data);
-    } catch (e) {
-      console.error('Collect Metrics failed:', e);
-      setMResult({ error: e.message });
-    }
+    } catch (e) { setMResult({ error: e.message }); }
     setMLoading(false);
   };
 
-  // ─── Render metric data as a table ────────────────────────────────
-  const renderMetricData = (data) => {
-    if (!data) return null;
-    if (data.error) {
-      return <Typography color="error">{data.error}</Typography>;
-    }
+  const rtParsed = rtResult ? (rtResult.error ? null : { rows: flattenMetrics(rtResult).map(r => ({ 'Metric Path': r.path, Value: r.value })) }) : null;
+  const pmParsed = pmResult ? parseResult(pmResult) : null;
+  const mParsed  = mResult  ? parseResult(mResult)  : null;
 
-    // Handle payload responses (PAGEMETRIC and COLLECTMETRIC return {payload: "..."})
-    let parsed = data;
-    if (data.payload) {
-      try {
-        parsed = JSON.parse(data.payload);
-      } catch {
-        return (
-          <Box sx={{ maxHeight: 500, overflow: 'auto' }}>
-            <pre style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>{data.payload}</pre>
-          </Box>
-        );
-      }
-    }
-
-    // If it's a Solr response with response.docs
-    if (parsed.response && parsed.response.docs) {
-      const docs = parsed.response.docs;
-      if (docs.length === 0) return <Typography color="text.secondary">No data</Typography>;
-      const keys = Object.keys(docs[0]).filter(k => !k.startsWith('_'));
-      return (
-        <TableContainer sx={{ maxHeight: 500 }}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                {keys.map(k => <TableCell key={k}><strong>{k}</strong></TableCell>)}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {docs.map((doc, i) => (
-                <TableRow key={i}>
-                  {keys.map(k => (
-                    <TableCell key={k} sx={{ fontSize: '0.75rem', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k] ?? '')}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      );
-    }
-
-    // If it has docs array (COLLECTMETRIC shape: {numFound, docs: [...]})
-    if (parsed.docs && Array.isArray(parsed.docs)) {
-      return renderNestedMetrics(parsed.docs[0] || {});
-    }
-
-    // Generic object — render as nested JSON tree
-    return renderNestedMetrics(parsed);
-  };
-
-  const renderNestedMetrics = (obj) => {
-    if (!obj || typeof obj !== 'object') return null;
-
-    const rows = [];
-    const flatten = (o, prefix = '') => {
-      for (const [key, val] of Object.entries(o)) {
-        const path = prefix ? `${prefix} → ${key}` : key;
-        if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-          flatten(val, path);
-        } else {
-          rows.push({ path, value: Array.isArray(val) ? val.join(', ') : String(val) });
-        }
-      }
-    };
-    flatten(obj);
-
-    if (rows.length === 0) return <Typography color="text.secondary">No metrics data</Typography>;
-
-    return (
-      <TableContainer sx={{ maxHeight: 500 }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell><strong>Metric Path</strong></TableCell>
-              <TableCell><strong>Value</strong></TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((r, i) => (
-              <TableRow key={i}>
-                <TableCell sx={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>{r.path}</TableCell>
-                <TableCell sx={{ fontSize: '0.75rem' }}>{r.value}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    );
-  };
-
-  // ─── Field row component ──────────────────────────────────────────
-  const FieldRow = ({ label, value, onChange, placeholder }) => (
-    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-      <Typography variant="body2" sx={{ minWidth: 100, fontWeight: 500 }}>{label}</Typography>
-      <TextField
-        size="small"
-        fullWidth
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        sx={{ maxWidth: 400 }}
-      />
-    </Stack>
-  );
+  const isLoading = [rtLoading, pmLoading, mLoading][activeTab];
+  const result    = [rtResult, pmResult, mResult][activeTab];
+  const parsed    = [rtParsed, pmParsed, mParsed][activeTab];
 
   return (
-    <Box p={3}>
-      <Typography variant="h5" fontWeight="bold" gutterBottom>
-        Analyze
-      </Typography>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Real Time" />
-        <Tab label="Page Metrics" />
-        <Tab label="Metrics" />
-      </Tabs>
+      {/* ── Top bar ───────────────────────────────────────────── */}
+      <Box sx={{
+        px: 3, py: 1.5, display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', borderBottom: '1px solid',
+        borderColor: 'divider', flexShrink: 0, minHeight: 52,
+      }}>
+        <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
+          Analyze
+        </Typography>
 
-      {/* ─── Tab 0: Real Time ──────────────────────────────────────── */}
-      {activeTab === 0 && (
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <FieldRow label="Key" value={rtKey} onChange={setRtKey} placeholder="Optional filter key" />
-          <FieldRow label="URL" value={rtUrl} onChange={setRtUrl} placeholder="e.g. http://solrserver:8983/solr/admin/metrics?wt=json" />
-          <FieldRow label="Collection" value={rtCollection} onChange={setRtCollection} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Handler" value={rtHandler} onChange={setRtHandler} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Metric" value={rtMetric} onChange={setRtMetric} placeholder={DEFAULT_REGEX} />
+        {/* Action buttons in top bar */}
+        <Stack direction="row" spacing={1} alignItems="center">
+          {isLoading && <CircularProgress size={16} sx={{ color: '#ff6b2b' }} />}
 
-          <Stack direction="row" spacing={2} mt={2} alignItems="center">
-            <Button variant="contained" size="small" onClick={handleAnalyze}>Analyze</Button>
-            {rtLoading && <CircularProgress size={20} />}
-          </Stack>
-
-          {rtResult && (
-            <Box mt={3}>
-              <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle2" gutterBottom>Results</Typography>
-              {rtResult.error ? (
-                <Typography color="error">{rtResult.error}</Typography>
-              ) : (
-                renderNestedMetrics(filterMetrics(rtResult) || rtResult)
-              )}
-            </Box>
+          {activeTab === 0 && (
+            <Button size="small" variant="contained" onClick={handleRealTime} disabled={rtLoading}
+              startIcon={rtLoading ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <PlayArrowRounded sx={{ fontSize: 16 }} />}
+              sx={{ height: 30, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600, px: 2, bgcolor: '#ff6b2b', '&:hover': { bgcolor: '#e85d1f' } }}>
+              {rtLoading ? 'Fetching...' : 'Analyze'}
+            </Button>
           )}
-        </Paper>
-      )}
 
-      {/* ─── Tab 1: Page Metrics ───────────────────────────────────── */}
-      {activeTab === 1 && (
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <FieldRow label="Test Name" value={pmTestName} onChange={setPmTestName} placeholder="e.g. listC" />
-          <FieldRow label="Collection" value={pmCollection} onChange={setPmCollection} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Handler" value={pmHandler} onChange={setPmHandler} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Metric" value={pmMetric} onChange={setPmMetric} placeholder={DEFAULT_REGEX} />
-
-          <Stack direction="row" spacing={2} mt={2} alignItems="center">
-            <Button variant="outlined" size="small" onClick={handlePageMetricsStart}>Start</Button>
-            <Button variant="outlined" size="small" onClick={handlePageMetricsPrev} disabled={pmPage === 0}>Previous</Button>
-            <Button variant="outlined" size="small" onClick={handlePageMetricsNext}>Next</Button>
-            <Typography variant="caption" color="text.secondary">Page: {pmPage}</Typography>
-            {pmLoading && <CircularProgress size={20} />}
-          </Stack>
-
-          {pmResult && (
-            <Box mt={3}>
-              <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle2" gutterBottom>Page Metrics — Page {pmPage}</Typography>
-              {renderMetricData(pmResult)}
-            </Box>
+          {activeTab === 1 && (
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <Chip size="small" label={`Page ${pmPage}`}
+                sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', borderRadius: '5px' }} />
+              <Button size="small" variant="outlined" onClick={() => { setPmPage(0); fetchPageMetrics(0); }}
+                sx={{ minWidth: 32, height: 30, p: 0 }} disabled={pmLoading}>
+                <FirstPageRounded sx={{ fontSize: 15 }} />
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => { const p = Math.max(0, pmPage - 1); setPmPage(p); fetchPageMetrics(p); }}
+                sx={{ minWidth: 32, height: 30, p: 0 }} disabled={pmPage === 0 || pmLoading}>
+                <NavigateBeforeRounded sx={{ fontSize: 16 }} />
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => { const p = pmPage + 1; setPmPage(p); fetchPageMetrics(p); }}
+                sx={{ minWidth: 32, height: 30, p: 0 }} disabled={pmLoading}>
+                <NavigateNextRounded sx={{ fontSize: 16 }} />
+              </Button>
+              <Button size="small" variant="contained" onClick={() => fetchPageMetrics(pmPage)} disabled={pmLoading}
+                startIcon={<PlayArrowRounded sx={{ fontSize: 16 }} />}
+                sx={{ height: 30, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600, px: 1.5, bgcolor: '#ff6b2b', '&:hover': { bgcolor: '#e85d1f' } }}>
+                Load
+              </Button>
+            </Stack>
           )}
-        </Paper>
-      )}
 
-      {/* ─── Tab 2: Metrics (Collect) ──────────────────────────────── */}
-      {activeTab === 2 && (
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <FieldRow label="Test Name" value={mTestName} onChange={setMTestName} placeholder="e.g. listC" />
-          <FieldRow label="Collection" value={mCollection} onChange={setMCollection} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Handler" value={mHandler} onChange={setMHandler} placeholder={DEFAULT_REGEX} />
-          <FieldRow label="Metric" value={mMetric} onChange={setMMetric} placeholder={DEFAULT_REGEX} />
-
-          <Stack direction="row" spacing={2} mt={2} alignItems="center">
-            <Button variant="contained" size="small" onClick={handleCollect}>Collect</Button>
-            {mLoading && <CircularProgress size={20} />}
-          </Stack>
-
-          {mResult && (
-            <Box mt={3}>
-              <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle2" gutterBottom>Collected Metrics</Typography>
-              {renderMetricData(mResult)}
-            </Box>
+          {activeTab === 2 && (
+            <Button size="small" variant="contained" onClick={handleCollect} disabled={mLoading}
+              startIcon={mLoading ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <PlayArrowRounded sx={{ fontSize: 16 }} />}
+              sx={{ height: 30, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600, px: 2, bgcolor: '#ff6b2b', '&:hover': { bgcolor: '#e85d1f' } }}>
+              {mLoading ? 'Collecting...' : 'Collect'}
+            </Button>
           )}
-        </Paper>
-      )}
+        </Stack>
+      </Box>
+
+      {/* ── Tabs ─────────────────────────────────────────────── */}
+      <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}
+          sx={{ minHeight: 38, px: 2, '& .MuiTab-root': { minHeight: 38, py: 0, textTransform: 'none', fontSize: '0.78rem' } }}>
+          {TABS.map(({ label, icon }) => (
+            <Tab key={label} label={label} icon={icon} iconPosition="start" sx={{ gap: 0.5 }} />
+          ))}
+        </Tabs>
+      </Box>
+
+      {/* ── Body: split panel ─────────────────────────────────── */}
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* ── LEFT: form fields ────────────────────────────────── */}
+        <Box sx={{
+          width: 280, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider',
+          overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5,
+        }}>
+          {activeTab === 0 && (
+            <>
+              <Field label="Key" value={rtKey} onChange={setRtKey} placeholder="Optional filter key" />
+              <Field label="URL" value={rtUrl} onChange={setRtUrl} placeholder="http://solrserver:8983/solr/admin/metrics?wt=json" monospace />
+              <Field label="Collection" value={rtCollection} onChange={setRtCollection} placeholder={DEFAULT_REGEX} monospace />
+              <Field label="Handler" value={rtHandler} onChange={setRtHandler} placeholder={DEFAULT_REGEX} monospace />
+              <Field label="Metric" value={rtMetric} onChange={setRtMetric} placeholder={DEFAULT_REGEX} monospace />
+            </>
+          )}
+
+          {activeTab === 1 && (
+            <Field label="Test Name" value={pmTestName} onChange={setPmTestName} placeholder="e.g. skuC" />
+          )}
+
+          {activeTab === 2 && (
+            <>
+              <Field label="Test Name" value={mTestName} onChange={setMTestName} placeholder="e.g. skuC" />
+              <Field label="Collection" value={mCollection} onChange={setMCollection} placeholder={DEFAULT_REGEX} monospace />
+              <Field label="Handler" value={mHandler} onChange={setMHandler} placeholder={DEFAULT_REGEX} monospace />
+              <Field label="Metric" value={mMetric} onChange={setMMetric} placeholder={DEFAULT_REGEX} monospace />
+            </>
+          )}
+        </Box>
+
+        {/* ── RIGHT: results ───────────────────────────────────── */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{
+            px: 2.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.5,
+            borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0,
+          }}>
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled' }}>
+              Results
+            </Typography>
+            {parsed?.rows?.length > 0 && (
+              <Chip size="small" label={`${parsed.rows.length} rows`}
+                sx={{ height: 16, fontSize: '0.58rem', fontWeight: 700, borderRadius: '4px' }} />
+            )}
+          </Box>
+
+          <Box sx={{ flex: 1, overflow: 'auto' }}>
+            {isLoading ? (
+              <Box sx={{ py: 8, textAlign: 'center' }}>
+                <CircularProgress size={24} sx={{ color: '#ff6b2b' }} />
+              </Box>
+            ) : !result ? (
+              <Box sx={{ py: 10, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>
+                  {activeTab === 0 ? 'Configure filters and click Analyze.' :
+                   activeTab === 1 ? 'Enter a test name and click Load.' :
+                   'Enter a test name and click Collect.'}
+                </Typography>
+              </Box>
+            ) : result.error || parsed?.error ? (
+              <Box sx={{ p: 2.5 }}>
+                <Typography sx={{ fontSize: '0.8rem', color: 'error.main', fontFamily: 'monospace' }}>
+                  {result.error || parsed?.error}
+                </Typography>
+              </Box>
+            ) : parsed?.raw ? (
+              <Box sx={{ p: 2.5 }}>
+                <pre style={{ fontSize: '0.76rem', whiteSpace: 'pre-wrap', fontFamily: 'monospace', margin: 0 }}>
+                  {parsed.raw}
+                </pre>
+              </Box>
+            ) : (
+              <ResultsTable rows={parsed?.rows || []} isDark={isDark} />
+            )}
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }

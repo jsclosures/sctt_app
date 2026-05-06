@@ -1,15 +1,3 @@
-/**
- * Script Runner Service
- *
- * Maps to the RUNNER handler in handlers.js.
- * The RUNNER loads a test by name, picks the script field by `type`,
- * decodes & evals it, then passes the input args to it.
- *
- * The `_s` suffix fields on each test hold the default arguments
- * for that script as a space-separated key=value string, e.g.:
- *   "testname=default useAsSeed=true csvData= requiredTag=collection1"
- */
-
 import { restGet, restPost } from '@/lib/api';
 
 // ─── Script type mapping ────────────────────────────────────────────
@@ -27,11 +15,6 @@ export const RUNNER_TYPES = [
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/**
- * Parse a space-separated key=value string into an object.
- * e.g. "testname=default useAsSeed=true csvData=" →
- *   { testname: "default", useAsSeed: "true", csvData: "" }
- */
 export function parseArgsString(str) {
   const result = {};
   if (!str) return result;
