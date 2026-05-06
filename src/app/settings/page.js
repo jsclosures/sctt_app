@@ -13,6 +13,7 @@ import {
   InfoOutlined, ErrorRounded
 } from '@mui/icons-material';
 import { useApp, useNotify } from '@/context/AppContext';
+import { useThemeConfig } from '../../context/themecontext';
 import { getConfig, saveConfig, resetSetup, getDefaultPipeline } from '@/lib/config';
 
 const SEARCH_PROVIDERS = [
@@ -38,14 +39,12 @@ const NAV = [
   { label: 'Preferences', icon: <TuneRounded sx={{ fontSize: 15 }} /> },
 ];
 
-// ─── Shared form field label ───────────────────────────────────────
 const FieldLabel = ({ children }) => (
   <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'text.disabled', mb: 0.5 }}>
     {children}
   </Typography>
 );
 
-// ─── Section heading ───────────────────────────────────────────────
 const SectionHead = ({ title, sub, action }) => (
   <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2.5 }}>
     <Box>
@@ -61,11 +60,13 @@ const SectionHead = ({ title, sub, action }) => (
 export default function SettingsPage() {
   const { updateAppConfig } = useApp();
   const notify = useNotify();
-  const [config, setConfig]                   = useState(null);
-  const [tab, setTab]                         = useState(0);
-  const [testing, setTesting]                 = useState(false);
+  const { mode, toggleMode } = useThemeConfig();
+
+  const [config, setConfig]                     = useState(null);
+  const [tab, setTab]                           = useState(0);
+  const [testing, setTesting]                   = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
-  const [dirty, setDirty]                     = useState(false);
+  const [dirty, setDirty]                       = useState(false);
 
   useEffect(() => { setConfig(getConfig()); }, []);
   if (!config) return null;
@@ -100,7 +101,7 @@ export default function SettingsPage() {
     setTesting(false);
   };
 
-  const movePipelineItem  = (i, dir) => { const items = [...config.pipeline]; const j = i + dir; if (j < 0 || j >= items.length) return; [items[i], items[j]] = [items[j], items[i]]; update('pipeline', items); };
+  const movePipelineItem   = (i, dir) => { const items = [...config.pipeline]; const j = i + dir; if (j < 0 || j >= items.length) return; [items[i], items[j]] = [items[j], items[i]]; update('pipeline', items); };
   const togglePipelineItem = (i) => { const items = [...config.pipeline]; items[i] = { ...items[i], enabled: !items[i].enabled }; update('pipeline', items); };
   const renamePipelineItem = (i, label) => { const items = [...config.pipeline]; items[i] = { ...items[i], label }; update('pipeline', items); };
   const removePipelineItem = (i) => { const items = [...config.pipeline]; items.splice(i, 1); update('pipeline', items); };
@@ -301,10 +302,10 @@ export default function SettingsPage() {
                 {config.auth?.provider === 'oauth2' && (
                   <Stack spacing={2}>
                     {[
-                      ['Client ID',      'auth.oauth.clientId',     ''],
-                      ['Authorize URL',  'auth.oauth.authorizeUrl', ''],
-                      ['Token URL',      'auth.oauth.tokenUrl',     ''],
-                      ['Scopes',         'auth.oauth.scope',        'e.g. openid profile email'],
+                      ['Client ID',     'auth.oauth.clientId',     ''],
+                      ['Authorize URL', 'auth.oauth.authorizeUrl', ''],
+                      ['Token URL',     'auth.oauth.tokenUrl',     ''],
+                      ['Scopes',        'auth.oauth.scope',        'e.g. openid profile email'],
                     ].map(([label, path, placeholder]) => (
                       <Box key={path}>
                         <FieldLabel>{label}</FieldLabel>
@@ -318,7 +319,11 @@ export default function SettingsPage() {
                 )}
                 {config.auth?.provider === 'auth0' && (
                   <Stack spacing={2}>
-                    {[['Domain', 'auth.auth0.domain', 'your-tenant.auth0.com'], ['Client ID', 'auth.auth0.clientId', ''], ['Audience', 'auth.auth0.audience', '']].map(([label, path, placeholder]) => (
+                    {[
+                      ['Domain',    'auth.auth0.domain',   'your-tenant.auth0.com'],
+                      ['Client ID', 'auth.auth0.clientId', ''],
+                      ['Audience',  'auth.auth0.audience', ''],
+                    ].map(([label, path, placeholder]) => (
                       <Box key={path}>
                         <FieldLabel>{label}</FieldLabel>
                         <TextField size="small" fullWidth placeholder={placeholder}
@@ -331,7 +336,11 @@ export default function SettingsPage() {
                 )}
                 {config.auth?.provider === 'ldap' && (
                   <Stack spacing={2}>
-                    {[['LDAP URL', 'auth.ldap.url', 'ldap://...'], ['Base DN', 'auth.ldap.baseDn', ''], ['Bind DN', 'auth.ldap.bindDn', '']].map(([label, path, placeholder]) => (
+                    {[
+                      ['LDAP URL', 'auth.ldap.url',    'ldap://...'],
+                      ['Base DN',  'auth.ldap.baseDn', ''],
+                      ['Bind DN',  'auth.ldap.bindDn', ''],
+                    ].map(([label, path, placeholder]) => (
                       <Box key={path}>
                         <FieldLabel>{label}</FieldLabel>
                         <TextField size="small" fullWidth placeholder={placeholder}
@@ -365,7 +374,6 @@ export default function SettingsPage() {
                     </Button>
                   }
                 />
-
                 <Stack spacing={0.5} sx={{ mb: 2 }}>
                   {(config.pipeline || []).map((item, i) => (
                     <Box key={item.id} sx={{
@@ -413,7 +421,6 @@ export default function SettingsPage() {
                     </Box>
                   ))}
                 </Stack>
-
                 <Button size="small" variant="outlined"
                   startIcon={<AddRounded sx={{ fontSize: 14 }} />}
                   onClick={addPipelineItem}
@@ -428,14 +435,20 @@ export default function SettingsPage() {
               <Box>
                 <SectionHead title="Preferences" sub="Appearance and behavior" />
                 <Stack spacing={2.5}>
+
+                  {/* Theme — connected to useThemeConfig */}
                   <Box>
                     <FieldLabel>Theme</FieldLabel>
-                    <Select size="small" fullWidth value={config.preferences?.theme || 'system'}
-                      onChange={e => update('preferences.theme', e.target.value)}
+                    <Select size="small" fullWidth
+                      value={mode}
+                      onChange={e => {
+                        const newMode = e.target.value;
+                        if (newMode !== mode) toggleMode();
+                        update('preferences.theme', newMode);
+                      }}
                       sx={{ fontSize: '0.85rem' }}>
                       <MenuItem value="light" sx={{ fontSize: '0.82rem' }}>Light</MenuItem>
                       <MenuItem value="dark" sx={{ fontSize: '0.82rem' }}>Dark</MenuItem>
-                      <MenuItem value="system" sx={{ fontSize: '0.82rem' }}>System</MenuItem>
                     </Select>
                   </Box>
 
@@ -458,14 +471,16 @@ export default function SettingsPage() {
 
                   <Stack spacing={0}>
                     {[
-                      { key: 'autoSave',          label: 'Auto-save',         desc: 'Save changes automatically as you type' },
-                      { key: 'showNotifications',  label: 'Notifications',     desc: 'Show toast notifications for actions' },
-                      { key: 'compactMode',        label: 'Compact Mode',      desc: 'Reduce spacing for denser layouts' },
-                      { key: 'editorWordWrap',     label: 'Editor Word Wrap',  desc: 'Wrap long lines in the code editor' },
+                      { key: 'autoSave',          label: 'Auto-save',        desc: 'Save changes automatically as you type' },
+                      { key: 'showNotifications', label: 'Notifications',    desc: 'Show toast notifications for actions' },
+                      { key: 'compactMode',       label: 'Compact Mode',     desc: 'Reduce spacing for denser layouts' },
+                      { key: 'editorWordWrap',    label: 'Editor Word Wrap', desc: 'Wrap long lines in the code editor' },
                     ].map((pref, i, arr) => (
                       <Box key={pref.key} sx={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        py: 1.5, borderBottom: i < arr.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
+                        py: 1.5,
+                        borderBottom: i < arr.length - 1 ? '1px solid' : 'none',
+                        borderColor: 'divider',
                       }}>
                         <Box>
                           <Typography sx={{ fontSize: '0.82rem', fontWeight: 500 }}>{pref.label}</Typography>

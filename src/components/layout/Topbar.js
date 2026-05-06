@@ -18,7 +18,7 @@ export default function Topbar({ collapsed }) {
       color="transparent"
       sx={{
         backgroundColor: theme.palette.background.default,
-        borderBottom: '1px solid #eaeaea',
+        borderBottom: `1px solid ${theme.palette.divider}`,
         px: 2
       }}
     >
